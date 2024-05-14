@@ -40,9 +40,9 @@ class _TriggerDetailsState extends State<TriggerDetails> {
   bool _isLoadingMore = false;
   bool _isLoadingTriggers = false;
   bool _isSearching = false;
-  int? currentFeedbackText;
+  String? currentFeedbackText;
   List<dynamic> favorites = [];
-  List<int> openTriggers = [];
+  List<String> openTriggers = [];
   int _indexLike = -1;
   bool _openMoreTriggers = false;
   final searchText = TextEditingController();

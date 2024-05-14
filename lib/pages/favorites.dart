@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:convert';
 
+import 'package:app_movie/components/custom_snackbar.dart';
 import 'package:app_movie/config/config.dart';
 import 'package:app_movie/entities/content.dart';
 import 'package:app_movie/entities/trigger.dart';
@@ -8,9 +10,9 @@ import 'package:app_movie/pages/content_page.dart';
 import 'package:app_movie/pages/search.dart';
 import 'package:app_movie/pages/trigger_content_list.dart';
 import 'package:app_movie/repositories/content_repository.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:http/http.dart' as http;
 
 class Favorites extends StatefulWidget {
   const Favorites({super.key});
@@ -35,7 +37,8 @@ class _FavoritesState extends State<Favorites> {
   List<int>? favoritesAnimes = [];
 
   List<Trigger> triggersFavorites = [];
-  List<int> triggersFavoritesInt = [];
+  List<String> triggersFavoritesString = [];
+  FirebaseFirestore db = FirebaseFirestore.instance;
 
   int _indexMovie = -1;
   int _indexAnime = -1;
@@ -61,7 +64,6 @@ class _FavoritesState extends State<Favorites> {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     setState(() {
       user = prefs.getStringList("user");
-      token = prefs.getString("token");
     });
     await fetchFavorites();
     await fetchMovies();
@@ -125,144 +127,148 @@ class _FavoritesState extends State<Favorites> {
       favoritesSeries = [];
       favoritesAnimes = [];
     });
-    var response = await http.get(
-        Uri.parse("${Config.api}/favorites/list?id=${user![Config.id]}"),
-        headers: {
-          "Accept": "application/json",
-          "content-type": "application/json",
-          "Authorization": token!
-        });
-    if (response.statusCode == 200) {
+    var favorites = await db
+        .collection("favorites")
+        .where("idUser", isEqualTo: user![Config.id])
+        .get();
+
+    if (favorites.docs.isNotEmpty) {
       setState(() {
-        for (var favorite in json.decode(response.body)) {
-          if (favorite["origin"] == Config.movie) {
+        favorites.docs.forEach((favorite) {
+          if (favorite.get("origin") == Config.movie) {
             favoritesMovies!.add(favorite["idContent"]);
           }
-          if (favorite["origin"] == Config.serie) {
+          if (favorite.get("origin") == Config.serie) {
             favoritesSeries!.add(favorite["idContent"]);
           }
-          if (favorite["origin"] == Config.anime) {
+          if (favorite.get("origin") == Config.anime) {
             favoritesAnimes!.add(favorite["idContent"]);
           }
-        }
-        _isLoading = false;
-      });
-    }
-  }
-
-  fetchFavoritesTriggers() async {
-    var response = await http.get(
-        Uri.parse(
-            "${Config.api}/triggers_favorites/list?id=${user![Config.id]}"),
-        headers: {
-          "Accept": "application/json",
-          "content-type": "application/json",
-          "Authorization": token!
         });
-    if (response.statusCode == 200) {
-      setState(() {
-        triggersFavoritesInt = json.decode(response.body).cast<int>();
-        _isLoading = false;
       });
-      fetchTriggers();
-    } else {
-      throw Exception('Failed to load Favorites');
     }
-  }
 
-  fetchTriggers() async {
-    var response = await http.post(
-        Uri.parse("${Config.api}/triggers/all?page=1&limit=20"),
-        body: json.encode({"search": "", "order": "id"}),
-        headers: {
-          "Accept": "application/json",
-          "content-type": "application/json",
-          "Authorization": token!
-        });
-    if (response.statusCode == 200) {
-      List<Trigger> result = List<Trigger>.from(
-          json.decode(response.body).map((x) => Trigger.fromJson(x)));
-      setState(() {
-        triggersFavorites =
-            result.where((t) => triggersFavoritesInt.contains(t.id)).toList();
-        _isLoaded = true;
-      });
-    } else {
-      throw Exception('Failed to load Triggers');
-    }
-  }
-
-  removeFavoriteTrigger(trigger) async {
     setState(() {
-      _isLoading = true;
+      _isLoading = false;
+      _indexMovie = -1;
+      _indexAnime = -1;
+      _indexSerie = -1;
     });
-    var response = await http.delete(
-        Uri.parse(
-            "${Config.api}/triggers_favorites/delete?user=${user![Config.id]}&id=$trigger"),
-        headers: {
-          "Accept": "application/json",
-          "content-type": "application/json",
-          "Authorization": token!
-        });
-    if (response.statusCode == 200) {
-      fetchFavoritesTriggers();
-      showInSnackBar('Removido dos favoritos com sucesso.');
-    }
-  }
-
-  addFavoriteTrigger(trigger) async {
-    setState(() {
-      _isLoading = true;
-    });
-    var body = jsonEncode({'id_user': user![Config.id], 'id_trigger': trigger});
-    var response = await http.post(
-        Uri.parse("${Config.api}/triggers_favorites/add"),
-        body: body,
-        headers: {
-          "Accept": "application/json",
-          "content-type": "application/json",
-          "Authorization": token!
-        });
-    if (response.statusCode == 200) {
-      fetchFavoritesTriggers();
-      showInSnackBar('Adicionado aos favoritos com sucesso.');
-    }
   }
 
   addFavorite(content, origin) async {
     setState(() {
       _isLoading = true;
     });
-    var body = jsonEncode(
-        {'idUser': user![Config.id], 'idContent': content, 'origin': origin});
-    var response = await http
-        .post(Uri.parse("${Config.api}/favorites/add"), body: body, headers: {
-      "Accept": "application/json",
-      "content-type": "application/json",
-      "Authorization": token!
-    });
-    if (response.statusCode == 200) {
+    var favorite = {
+      'idUser': user![Config.id],
+      'idContent': content,
+      'origin': origin
+    };
+
+    db.collection("favorites").add(favorite).then((value) {
       fetchFavorites();
-      showInSnackBar('Adicionado aos favoritos com sucesso.');
-    }
+
+      Timer(
+          const Duration(milliseconds: 200),
+          () => CustomSnackBar.show(
+              context, 'Adicionado aos favoritos com sucesso.'));
+    });
   }
 
   removeFavorite(content, origin) async {
     setState(() {
       _isLoading = true;
     });
-    var response = await http.delete(
-        Uri.parse(
-            "${Config.api}/favorites/delete?user=${user![Config.id]}&content=$content&origin=$origin"),
-        headers: {
-          "Accept": "application/json",
-          "content-type": "application/json",
-          "Authorization": token!
-        });
-    if (response.statusCode == 200) {
-      fetchFavorites();
-      showInSnackBar('Removido dos favoritos com sucesso.');
+    var querySnapshot = await db
+        .collection("favorites")
+        .where("idUser", isEqualTo: user![Config.id])
+        .where("idContent", isEqualTo: content)
+        .where("origin", isEqualTo: origin)
+        .get();
+    querySnapshot.docs.forEach((doc) async {
+      await doc.reference.delete();
+    });
+
+    fetchFavorites();
+    Timer(
+        const Duration(milliseconds: 200),
+        () => CustomSnackBar.show(
+            context, 'Removido dos favoritos com sucesso.'));
+  }
+
+  fetchFavoritesTriggers() async {
+    var tf = await db
+        .collection("triggers_favorites")
+        .where("idUser", isEqualTo: user![Config.id])
+        .get();
+
+    if (tf.docs.isNotEmpty) {
+      setState(() {
+        triggersFavoritesString =
+            tf.docs.map((v) => v.get("idTrigger") as String).toList();
+      });
+    } else {
+      setState(() {
+        triggersFavoritesString = [];
+      });
     }
+    setState(() {
+      _isLoading = false;
+    });
+    fetchTriggers();
+  }
+
+  fetchTriggers() async {
+    Query<Map<String, dynamic>> query = db.collection("triggers");
+    var querySnapshot = await query.get();
+    if (querySnapshot.docs.isNotEmpty) {
+      List<Trigger> result = querySnapshot.docs.map((x) {
+        var data = {
+          "id": x.id,
+          "name": x.get("name"),
+          "description": x.get("description")
+        };
+        return Trigger.fromJson(data);
+      }).toList();
+
+      setState(() {
+        triggersFavorites = result
+            .where((t) => triggersFavoritesString.contains(t.id))
+            .toList();
+      });
+    }
+    setState(() {
+      _isLoaded = true;
+    });
+  }
+
+  removeFavoriteTrigger(trigger) async {
+    setState(() {
+      _isLoading = true;
+    });
+    var querySnapshot = await db
+        .collection("triggers_favorites")
+        .where("idUser", isEqualTo: user![Config.id])
+        .where("idTrigger", isEqualTo: trigger)
+        .get();
+    querySnapshot.docs.forEach((doc) async {
+      await doc.reference.delete();
+    });
+
+    fetchFavoritesTriggers();
+    showInSnackBar('Removido dos favoritos com sucesso.');
+  }
+
+  addFavoriteTrigger(trigger) async {
+    setState(() {
+      _isLoading = true;
+    });
+    var body = {'idUser': user![Config.id], 'idTrigger': trigger};
+    db.collection("triggers_favorites").add(body).then((value) {
+      fetchFavoritesTriggers();
+      showInSnackBar('Adicionado aos favoritos com sucesso.');
+    });
   }
 
   reset() {
@@ -361,7 +367,7 @@ class _FavoritesState extends State<Favorites> {
                                     ))
                                 : InkWell(
                                     onTap: () {
-                                      triggersFavoritesInt.contains(
+                                      triggersFavoritesString.contains(
                                               triggersFavorites[index].id)
                                           ? removeFavoriteTrigger(
                                               triggersFavorites[index].id)
@@ -372,7 +378,7 @@ class _FavoritesState extends State<Favorites> {
                                       height: 30,
                                       width: 30,
                                       child: Icon(
-                                        triggersFavoritesInt.contains(
+                                        triggersFavoritesString.contains(
                                                 triggersFavorites[index].id)
                                             ? Icons.star
                                             : Icons.star_border,
@@ -798,7 +804,10 @@ class _FavoritesState extends State<Favorites> {
                     MaterialPageRoute(
                         builder: (contexxt) => const SearchPage()));
               },
-              icon: const Icon(Icons.search)),
+              icon: const Icon(
+                Icons.search,
+                color: Colors.white,
+              )),
         ],
       ),
       body: _isLoaded

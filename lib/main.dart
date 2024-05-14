@@ -1,7 +1,9 @@
-import 'package:app_movie/config/config.dart';
-import 'package:app_movie/pages/login_page.dart';
 import 'package:flutter/material.dart';
+import 'package:app_movie/config/config.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:app_movie/pages/home_page.dart';
+import 'package:app_movie/pages/login_page.dart';
+import 'package:app_movie/pages/register_page.dart';
 import 'firebase_options.dart';
 
 void main() async {
@@ -9,33 +11,36 @@ void main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
-  runApp(MaterialApp(
+  runApp(const MyApp());
+}
+
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Flutter Demo',
       theme: ThemeData(
-          fontFamily: 'ProximaNova',
-          inputDecorationTheme: InputDecorationTheme(
-              hintStyle: const TextStyle(color: Config.disabledColor),
-              filled: true,
-              fillColor: Config.inputColor),
-          iconTheme: const IconThemeData(color: Config.textColor),
-          textTheme: const TextTheme(
-            bodyMedium: TextStyle(
-              color: Config.textColor,
-            ),
-          ),
-          primarySwatch: Config.primarySwatch,
-          appBarTheme: AppBarTheme(
-            toolbarHeight: 48,
-            titleTextStyle: const TextStyle(
-                fontSize: 16,
-                color: Colors.white,
-                fontWeight: FontWeight.w600,
-                fontFamily: 'ProximaNova'),
-            shape: const RoundedRectangleBorder(
-                borderRadius: BorderRadius.only(
-                    bottomLeft: Radius.circular(21),
-                    bottomRight: Radius.circular(21))),
-            backgroundColor: Config.primaryColor,
-          ),
-          scaffoldBackgroundColor: Config.panelColor),
-      home: const LoginPage()));
+        fontFamily: 'ProximaNova',
+        primarySwatch: Config.primaryColor,
+        useMaterial3: true,
+        appBarTheme: const AppBarTheme(
+          toolbarHeight: 48,
+          titleTextStyle: TextStyle(fontSize: 16, color: Colors.white),
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.only(
+                  bottomLeft: Radius.circular(21),
+                  bottomRight: Radius.circular(21))),
+          backgroundColor: Config.primaryColor,
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(24)),
+          isDense: true, // Added this
+          contentPadding: const EdgeInsets.all(15),
+        ),
+      ),
+      home: const LoginPage(),
+    );
+  }
 }

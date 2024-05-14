@@ -1,12 +1,10 @@
-import 'dart:convert';
-
 import 'package:app_movie/config/config.dart';
 import 'package:app_movie/entities/user.dart';
 import 'package:app_movie/pages/edit_user.dart';
 import 'package:app_movie/pages/footer.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:http/http.dart' as http;
 
 class PerfilPage extends StatefulWidget {
   const PerfilPage({super.key});
@@ -18,6 +16,7 @@ class PerfilPage extends StatefulWidget {
 class _PerfilPageState extends State<PerfilPage> {
   User? user;
   bool _isLoaded = false;
+  FirebaseFirestore db = FirebaseFirestore.instance;
 
   @override
   void initState() {
@@ -29,21 +28,17 @@ class _PerfilPageState extends State<PerfilPage> {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     List<String>? userPrefs = prefs.getStringList("user");
 
-    var response = await http.get(
-        Uri.parse("${Config.api}/users/details?id=${userPrefs![Config.id]}"),
-        headers: {
-          "Accept": "application/json",
-          "content-type": "application/json",
-          "Authorization": prefs.get("token").toString()
-        });
-    if (response.statusCode == 200) {
-      setState(() {
-        user = User.fromJson(json.decode(response.body));
-        _isLoaded = true;
-      });
-    } else {
-      throw Exception('Failed to load Favorites');
-    }
+    var userDb = await db
+        .collection("users")
+        .where("email", isEqualTo: userPrefs![Config.id])
+        .get();
+
+    var userData = userDb.docs.first.data();
+    userData["id"] = userDb.docs.first.id;
+    setState(() {
+      user = User.fromJson(userData);
+      _isLoaded = true;
+    });
   }
 
   renderUser() {
@@ -89,7 +84,7 @@ class _PerfilPageState extends State<PerfilPage> {
               const SizedBox(
                 height: 12,
               ),
-              Text(user!.name),
+              Text(user!.name + " " + user!.lastName),
               const SizedBox(
                 height: 12,
               ),
@@ -152,12 +147,19 @@ class _PerfilPageState extends State<PerfilPage> {
                       borderRadius: BorderRadius.all(Radius.circular(32)))),
                 ),
                 onPressed: () {
-                  Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (context) => const EditUser()));
+                  Navigator.of(context)
+                      .push(MaterialPageRoute(
+                          builder: (context) => const EditUser()))
+                      .then((value) {
+                    if (value != null && value) {
+                      fetchUser();
+                    }
+                  });
                 },
-                child: const Text("Editar")),
+                child: const Text(
+                  "Editar",
+                  style: TextStyle(color: Colors.white),
+                )),
           ),
         ],
       ),
@@ -172,6 +174,7 @@ class _PerfilPageState extends State<PerfilPage> {
             child: const Icon(
               Icons.arrow_back_ios,
               size: 18,
+              color: Colors.white,
             ),
             onTap: () {
               Navigator.pop(context);

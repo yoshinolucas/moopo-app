@@ -25,6 +25,7 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
           child: const Icon(
             Icons.arrow_back_ios,
             size: 18,
+            color: Colors.white,
           ),
           onTap: () {
             Navigator.pop(context);

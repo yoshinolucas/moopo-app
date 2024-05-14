@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:convert';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:app_movie/components/custom_snackbar.dart';
 import 'package:app_movie/config/config.dart';
 import 'package:app_movie/entities/trigger.dart';
-import 'package:app_movie/pages/trigger_details.dart';
 import 'package:app_movie/repositories/content_repository.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -42,139 +44,126 @@ class _ContentPageState extends State<ContentPage> {
     setState(() {
       favorites = [];
     });
+    var db = FirebaseFirestore.instance;
+    var favoritesDb = await db
+        .collection("favorites")
+        .where("idUser", isEqualTo: user![Config.id])
+        .get();
 
-    var response = await http.get(
-        Uri.parse("${Config.api}/favorites/list?id=${user![0]}"),
-        headers: {
-          "Accept": "application/json",
-          "content-type": "application/json",
-          "Authorization": token!
-        });
-    if (response.statusCode == 200) {
+    if (favoritesDb.docs.isNotEmpty) {
       setState(() {
-        for (var favorite in json.decode(response.body)) {
-          if (favorite["origin"] == widget.origin) {
+        favoritesDb.docs.forEach((favorite) {
+          if (favorite.get("origin") == widget.origin) {
             favorites.add(favorite["idContent"]);
           }
-        }
+        });
         _isLoading = false;
       });
     }
   }
 
-  addFavorite(content) async {
+  addFavorite(content, origin) async {
     setState(() {
       _isLoading = true;
     });
+    var favorite = {
+      'idUser': user![Config.id],
+      'idContent': content,
+      'origin': origin
+    };
+    var db = FirebaseFirestore.instance;
+    db.collection("favorites").add(favorite).then((value) {
+      fetchFavorites();
 
-    var body = jsonEncode(
-        {"idUser": user![0], "idContent": content, 'origin': widget.origin});
-    var response = await http
-        .post(Uri.parse("${Config.api}/favorites/add"), body: body, headers: {
-      "Accept": "application/json",
-      "content-type": "application/json",
-      "Authorization": token!
+      Timer(
+          const Duration(milliseconds: 200),
+          () => CustomSnackBar.show(
+              context, 'Adicionado aos favoritos com sucesso.'));
     });
-    if (response.statusCode == 200) {
-      setState(() {
-        fetchFavorites();
-        showInSnackBar('Adicionado aos favoritos com sucesso.');
-      });
-    }
   }
 
-  void showInSnackBar(msg) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(msg, style: TextStyle(color: Colors.white)),
-        duration: const Duration(milliseconds: 3600),
-        backgroundColor: Config.primaryColor,
-      ),
-    );
-  }
-
-  removeFavorite(content) async {
+  removeFavorite(content, origin) async {
     setState(() {
       _isLoading = true;
     });
-
-    var response = await http.delete(
-        Uri.parse(
-            "${Config.api}/favorites/delete?user=${user![0]}&content=$content&origin=${widget.origin}"),
-        headers: {
-          "Accept": "application/json",
-          "content-type": "application/json",
-          "Authorization": token!
-        });
-
-    if (response.statusCode == 200) {
-      setState(() {
-        fetchFavorites();
-        showInSnackBar('Removido dos favoritos com sucesso.');
-      });
-    }
-  }
-
-  fetchTriggersFavorites() async {
-    var response = await http.get(
-        Uri.parse("${Config.api}/triggers_favorites/list?id=${user![0]}"),
-        headers: {
-          "Accept": "application/json",
-          "content-type": "application/json",
-          "Authorization": token!
-        });
-    if (response.statusCode == 200) {
-      setState(() {
-        triggerFavorites = json.decode(response.body).cast<int>();
-        _isLoading = false;
-      });
-    } else {
-      throw Exception('Failed to load Favorites');
-    }
-  }
-
-  addTriggerFavorite(trigger) async {
-    setState(() {
-      _isLoading = true;
+    var db = FirebaseFirestore.instance;
+    var querySnapshot = await db
+        .collection("favorites")
+        .where("idUser", isEqualTo: user![Config.id])
+        .where("idContent", isEqualTo: content)
+        .where("origin", isEqualTo: origin)
+        .get();
+    querySnapshot.docs.forEach((doc) async {
+      await doc.reference.delete();
     });
 
-    var body = jsonEncode({"id_user": user![0], "id_trigger": trigger});
-    var response = await http.post(
-        Uri.parse("${Config.api}/triggers_favorites/add"),
-        body: body,
-        headers: {
-          "Accept": "application/json",
-          "content-type": "application/json",
-          "Authorization": token!
-        });
-    if (response.statusCode == 200) {
-      setState(() {
-        fetchTriggersFavorites();
-        showInSnackBar('Adicionado aos favoritos com sucesso.');
-      });
-    }
+    fetchFavorites();
+    Timer(
+        const Duration(milliseconds: 200),
+        () => CustomSnackBar.show(
+            context, 'Removido dos favoritos com sucesso.'));
   }
 
-  removeTriggerFavorite(trigger) async {
-    setState(() {
-      _isLoading = true;
-    });
+  // fetchTriggersFavorites() async {
+  //   var response = await http.get(
+  //       Uri.parse("${Config.api}/triggers_favorites/list?id=${user![0]}"),
+  //       headers: {
+  //         "Accept": "application/json",
+  //         "content-type": "application/json",
+  //         "Authorization": token!
+  //       });
+  //   if (response.statusCode == 200) {
+  //     setState(() {
+  //       triggerFavorites = json.decode(response.body).cast<int>();
+  //       _isLoading = false;
+  //     });
+  //   } else {
+  //     throw Exception('Failed to load Favorites');
+  //   }
+  // }
 
-    var response = await http.delete(
-        Uri.parse(
-            "${Config.api}/triggers_favorites/delete?user=${user![0]}&id=$trigger"),
-        headers: {
-          "Accept": "application/json",
-          "content-type": "application/json",
-          "Authorization": token!
-        });
-    if (response.statusCode == 200) {
-      setState(() {
-        fetchTriggersFavorites();
-        showInSnackBar('Removido dos favoritos com sucesso.');
-      });
-    }
-  }
+  // addTriggerFavorite(trigger) async {
+  //   setState(() {
+  //     _isLoading = true;
+  //   });
+
+  //   var body = jsonEncode({"id_user": user![0], "id_trigger": trigger});
+  //   var response = await http.post(
+  //       Uri.parse("${Config.api}/triggers_favorites/add"),
+  //       body: body,
+  //       headers: {
+  //         "Accept": "application/json",
+  //         "content-type": "application/json",
+  //         "Authorization": token!
+  //       });
+  //   if (response.statusCode == 200) {
+  //     setState(() {
+  //       fetchTriggersFavorites();
+  //       showInSnackBar('Adicionado aos favoritos com sucesso.');
+  //     });
+  //   }
+  // }
+
+  // removeTriggerFavorite(trigger) async {
+  //   setState(() {
+  //     _isLoading = true;
+  //   });
+
+  //   var response = await http.delete(
+  //       Uri.parse(
+  //           "${Config.api}/triggers_favorites/delete?user=${user![0]}&id=$trigger"),
+  //       headers: {
+  //         "Accept": "application/json",
+  //         "content-type": "application/json",
+  //         "Authorization": token!
+  //       });
+  //   if (response.statusCode == 200) {
+  //     setState(() {
+  //       fetchTriggersFavorites();
+  //       showInSnackBar('Removido dos favoritos com sucesso.');
+  //     });
+  //   }
+  // }
 
   getData() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
@@ -182,9 +171,9 @@ class _ContentPageState extends State<ContentPage> {
       user = prefs.getStringList("user");
       token = prefs.getString("token");
     });
-    await fetchTriggers();
+    // await fetchTriggers();
     await fetchFavorites();
-    await fetchTriggersFavorites();
+    // await fetchTriggersFavorites();
     if (widget.origin == 1) {
       providers =
           await ContentRepository.fetchMoviesProvidersById(widget.movie.id);
@@ -205,25 +194,25 @@ class _ContentPageState extends State<ContentPage> {
     });
   }
 
-  fetchTriggers() async {
-    var response = await http.get(
-        Uri.parse(
-            "${Config.api}/triggers/content?id=${widget.movie.id}&user=${user![0]}&origin=${widget.origin}&all=0"),
-        headers: {
-          "Accept": "application/json",
-          "content-type": "application/json",
-          "Authorization": token!
-        });
-    if (response.statusCode == 200) {
-      setState(() {
-        triggers = List<Trigger>.from(json
-            .decode(response.body)
-            .map((x) => Trigger.fromJson(x['trigger'])));
-      });
-    } else {
-      throw Exception('Failed to load Feedbacks');
-    }
-  }
+  // fetchTriggers() async {
+  //   var response = await http.get(
+  //       Uri.parse(
+  //           "${Config.api}/triggers/content?id=${widget.movie.id}&user=${user![0]}&origin=${widget.origin}&all=0"),
+  //       headers: {
+  //         "Accept": "application/json",
+  //         "content-type": "application/json",
+  //         "Authorization": token!
+  //       });
+  //   if (response.statusCode == 200) {
+  //     setState(() {
+  //       triggers = List<Trigger>.from(json
+  //           .decode(response.body)
+  //           .map((x) => Trigger.fromJson(x['trigger'])));
+  //     });
+  //   } else {
+  //     throw Exception('Failed to load Feedbacks');
+  //   }
+  // }
 
   renderTriggers() {
     return Padding(
@@ -245,16 +234,16 @@ class _ContentPageState extends State<ContentPage> {
         itemBuilder: (context, index) => Padding(
           padding: const EdgeInsets.all(6.0),
           child: InkWell(
-            onTap: () {
-              Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (context) => TriggerDetails(
-                            content: widget.movie.id,
-                            title: widget.movie.title,
-                            origin: widget.origin,
-                          )));
-            },
+            // onTap: () {
+            //   Navigator.push(
+            //       context,
+            //       MaterialPageRoute(
+            //           builder: (context) => TriggerDetails(
+            //                 content: widget.movie.id,
+            //                 title: widget.movie.title,
+            //                 origin: widget.origin,
+            //               )));
+            // },
             child: ClipRRect(
               borderRadius: BorderRadius.circular(12),
               child: Stack(alignment: Alignment.topRight, children: [
@@ -284,21 +273,21 @@ class _ContentPageState extends State<ContentPage> {
                           ),
                         ))
                     : InkWell(
-                        onTap: () {
-                          triggerFavorites.contains(triggers[index].id)
-                              ? removeTriggerFavorite(triggers[index].id)
-                              : addTriggerFavorite(triggers[index].id);
-                        },
+                        // onTap: () {
+                        //   triggerFavorites.contains(triggers[index].id)
+                        //       ? removeTriggerFavorite(triggers[index].id)
+                        //       : addTriggerFavorite(triggers[index].id);
+                        // },
                         child: SizedBox(
-                          height: 30,
-                          width: 30,
-                          child: Icon(
-                            triggerFavorites.contains(triggers[index].id)
-                                ? Icons.star
-                                : Icons.star_border_outlined,
-                            color: Colors.white,
-                          ),
-                        ))
+                        height: 30,
+                        width: 30,
+                        child: Icon(
+                          triggerFavorites.contains(triggers[index].id)
+                              ? Icons.star
+                              : Icons.star_border_outlined,
+                          color: Colors.white,
+                        ),
+                      ))
               ]),
             ),
           ),
@@ -443,13 +432,13 @@ class _ContentPageState extends State<ContentPage> {
                           TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
                   TextButton(
                       onPressed: () {
-                        Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (context) => TriggerDetails(
-                                    content: widget.movie.id,
-                                    title: widget.movie.title,
-                                    origin: widget.origin)));
+                        // Navigator.push(
+                        //     context,
+                        //     MaterialPageRoute(
+                        //         builder: (context) => TriggerDetails(
+                        //             content: widget.movie.id,
+                        //             title: widget.movie.title,
+                        //             origin: widget.origin)));
                       },
                       child: Text(
                         "Ver mais",
@@ -554,14 +543,14 @@ class _ContentPageState extends State<ContentPage> {
                           TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
                   TextButton(
                       onPressed: () {
-                        Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (context) => TriggerDetails(
-                                      content: widget.movie.id,
-                                      title: widget.movie.title,
-                                      origin: widget.origin,
-                                    )));
+                        // Navigator.push(
+                        //     context,
+                        //     MaterialPageRoute(
+                        //         builder: (context) => TriggerDetails(
+                        //               content: widget.movie.id,
+                        //               title: widget.movie.title,
+                        //               origin: widget.origin,
+                        //             )));
                       },
                       child: Text(
                         "Ver mais",
@@ -624,8 +613,8 @@ class _ContentPageState extends State<ContentPage> {
               onTap: () {
                 if (!_isLoading || isLoaded) {
                   favorites.contains(widget.movie.id)
-                      ? removeFavorite(widget.movie.id)
-                      : addFavorite(widget.movie.id);
+                      ? removeFavorite(widget.movie.id, widget.origin)
+                      : addFavorite(widget.movie.id, widget.origin);
                 }
               },
               child: SizedBox(

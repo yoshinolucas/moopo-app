@@ -1,6 +1,6 @@
 # app_movie
 
-A new Flutter project.
+Um aplicativo que informa gatilhos emocionais em mídias
 
 ## Getting Started
 

@@ -1,13 +1,15 @@
 class User {
-  final int id;
+  final String id;
   final String name;
   final String username;
+  final String lastName;
   final String email;
   final String password;
   final String image;
 
   const User(
       {required this.name,
+      required this.lastName,
       required this.id,
       required this.username,
       required this.email,
@@ -17,6 +19,7 @@ class User {
   factory User.fromJson(Map<String, dynamic> json) => User(
       id: json['id'],
       name: json['firstName'],
+      lastName: json['lastName'],
       username: json['username'],
       email: json['email'],
       password: json['password'] ?? "",
@@ -26,6 +29,7 @@ class User {
         "id": id,
         "firstName": name,
         "username": username,
+        "lastName": lastName,
         "email": email,
         "password": password,
         "image": image

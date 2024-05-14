@@ -12,7 +12,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 
 class TriggerContentList extends StatefulWidget {
-  final int trigger;
+  final String trigger;
   final String name;
   const TriggerContentList(
       {super.key, required this.trigger, required this.name});
