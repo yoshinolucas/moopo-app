@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "1028541834869",
+    "project_id": "safeflix",
+    "storage_bucket": "safeflix.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1028541834869:android:96901e27bf9a8f8407fa3c",
+        "android_client_info": {
+          "package_name": "com.safeflix.app_movie"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1028541834869-tgdarcca6vinilsf6ksofcn0cl42pv82.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.safeflix.app_movie",
+            "certificate_hash": "64c26a2f38e6ab0db21ac84dd31b7484394d8266"
+          }
+        },
+        {
+          "client_id": "1028541834869-7gbgs638nj11v1lk7pe2nollvbecjf52.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA5hoa1BRdVed2Ic_gLp7gR3sNto0udSE8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1028541834869-7gbgs638nj11v1lk7pe2nollvbecjf52.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "1028541834869-4a4t88ba5ku7o274psk2tqg7e7l2ac43.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.appMovie"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
