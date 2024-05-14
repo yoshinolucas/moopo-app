@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:app_movie/config/config.dart';
 import 'package:app_movie/entities/trigger.dart';
 import 'package:flutter/material.dart';
@@ -18,6 +19,7 @@ class _NewTriggerState extends State<NewTrigger> {
   final name = TextEditingController();
   final description = TextEditingController();
   List<Trigger> triggers = [];
+  FirebaseFirestore db = FirebaseFirestore.instance;
 
   @override
   void initState() {
@@ -25,20 +27,13 @@ class _NewTriggerState extends State<NewTrigger> {
   }
 
   postTrigger() async {
-    var body =
-        json.encode({"name": name.text, "description": description.text});
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    var response = await http
-        .post(Uri.parse("${Config.api}/triggers/add"), body: body, headers: {
-      "Accept": "application/json",
-      "content-type": "application/json",
-      "Authorization": prefs.get("token").toString()
-    });
-    if (response.statusCode == 200) {
-      Timer(const Duration(seconds: 2), () {
-        Navigator.pop(context);
-      });
-    }
+    var body = {"name": name.text, "description": description.text};
+    db
+        .collection("triggers")
+        .add(body)
+        .then((value) => Timer(const Duration(seconds: 2), () {
+              Navigator.pop(context);
+            }));
   }
 
   @override

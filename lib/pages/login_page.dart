@@ -1,12 +1,14 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:app_movie/config/config.dart';
 import 'package:app_movie/pages/change_password.dart';
-import 'package:app_movie/pages/home.dart';
-import 'package:app_movie/pages/new_user.dart';
-import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:app_movie/pages/home_page.dart';
+import 'package:app_movie/pages/register_page.dart';
+import 'package:flutter/material.dart';
+
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -28,50 +30,39 @@ class _LoginPageState extends State<LoginPage> {
 
   verificateUserSession() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
-    if (prefs.getString("refresh_token") != null) {
-      try {
-        var response = await http.post(
-            Uri.parse(
-                "${Config.api}/users/refresh_token?token=${prefs.getString("refresh_token")}"),
-            headers: {
-              "Accept": "application/json",
-              "Content-type": "application/json"
-            });
-        setState(() {
-          _actualImage = Config.logo2;
-        });
-        if (response.statusCode == 200) {
-          prefs.setString(
-              "token", "Bearer ${json.decode(response.body)["token"]}");
+    try {
+      FirebaseAuth auth = FirebaseAuth.instance;
+      setState(() {
+        _actualImage = Config.logo2;
+      });
+      if (auth.currentUser != null) {
+        var db = FirebaseFirestore.instance;
+        var userDb = await db
+            .collection("users")
+            .where("email", isEqualTo: auth.currentUser!.email)
+            .get();
 
-          Timer(const Duration(seconds: 2), () {
-            Navigator.push(context,
-                MaterialPageRoute(builder: (context) => const HomePage()));
-          });
-        } else {
-          setState(() {
-            _isLoaded = true;
-          });
-          showInSnackBar('Sessão expirada, por favor faça o login novamente.');
-        }
-      } catch (e) {
+        prefs.setStringList("user", [
+          auth.currentUser!.email.toString(),
+          userDb.docs.first.get("role").toString()
+        ]);
+
+        Timer(const Duration(seconds: 2), () {
+          Navigator.push(context,
+              MaterialPageRoute(builder: (context) => const HomePage()));
+        });
+      } else {
         setState(() {
           _isLoaded = true;
         });
-        showInSnackBar(
-            'Erro no servidor, desculpe pelo transtorno. Por favor, volte mais tarde');
+        showInSnackBar('Sessão expirada, por favor faça o login novamente.');
       }
-    } else {
-      Timer(const Duration(milliseconds: 1000), () {
-        setState(() {
-          _actualImage = Config.logo2;
-        });
-        Timer(const Duration(milliseconds: 2000), () {
-          setState(() {
-            _isLoaded = true;
-          });
-        });
+    } catch (e) {
+      setState(() {
+        _isLoaded = true;
       });
+      showInSnackBar(
+          'Erro no servidor, desculpe pelo transtorno. Por favor, volte mais tarde');
     }
   }
 
@@ -135,10 +126,7 @@ class _LoginPageState extends State<LoginPage> {
                           style: const TextStyle(color: Config.textColor),
                           decoration: const InputDecoration(
                             prefixIcon: Icon(Icons.email),
-                            border: InputBorder.none,
                             hintText: 'E-mail',
-                            isDense: true, // Added this
-                            contentPadding: EdgeInsets.all(15),
                           ),
                         ),
                       ),
@@ -155,10 +143,7 @@ class _LoginPageState extends State<LoginPage> {
                           style: const TextStyle(color: Config.textColor),
                           decoration: const InputDecoration(
                             prefixIcon: Icon(Icons.lock),
-                            border: InputBorder.none,
                             hintText: 'Senha',
-                            isDense: true, // Added this
-                            contentPadding: EdgeInsets.all(15),
                           ),
                         ),
                       ),
@@ -166,11 +151,11 @@ class _LoginPageState extends State<LoginPage> {
                         alignment: Alignment.centerRight,
                         child: TextButton(
                             onPressed: () {
-                              Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                      builder: (context) =>
-                                          const ChangePassword()));
+                              // Navigator.push(
+                              //     context,
+                              //     MaterialPageRoute(
+                              //         builder: (context) =>
+                              //             const ChangePassword()));
                             },
                             child: Text(
                               "Esqueceu a senha?",
@@ -205,7 +190,8 @@ class _LoginPageState extends State<LoginPage> {
                                     ),
                                   )
                                 : const Text('Entrar',
-                                    style: TextStyle(fontSize: 20))),
+                                    style: TextStyle(
+                                        fontSize: 20, color: Colors.white))),
                       ),
                       const SizedBox(
                         height: 32,
@@ -241,7 +227,7 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                       InkWell(
                         onTap: () {
-                          signInGoogle();
+                          // signInGoogle();
                         },
                         child: Container(
                             decoration: BoxDecoration(
@@ -275,7 +261,7 @@ class _LoginPageState extends State<LoginPage> {
                                 Navigator.push(
                                     context,
                                     MaterialPageRoute(
-                                        builder: (context) => NewUser()));
+                                        builder: (context) => RegisterPage()));
                               },
                               child: Text(
                                 "Crie uma conta",
@@ -299,46 +285,28 @@ class _LoginPageState extends State<LoginPage> {
     });
     if (username.text.isNotEmpty && pass.text.isNotEmpty) {
       try {
-        await _auth.signInWithEmailAndPassword(
+        UserCredential userCredential = await _auth.signInWithEmailAndPassword(
           email: username.text,
           password: pass.text,
         );
+        User? user = userCredential.user;
+        SharedPreferences prefs = await SharedPreferences.getInstance();
 
-        var body =
-            jsonEncode({'username': username.text, 'password': pass.text});
-        var response = await http.post(Uri.parse("${Config.api}/users/login"),
-            body: body,
-            headers: {
-              "Accept": "application/json",
-              "Content-type": "application/json"
-            });
-        if (response.statusCode == 200) {
-          SharedPreferences prefs = await SharedPreferences.getInstance();
-          prefs.setString(
-              "token", "Bearer ${json.decode(response.body)["token"]}");
+        var db = FirebaseFirestore.instance;
+        var userDb = await db
+            .collection("users")
+            .where("email", isEqualTo: user!.email)
+            .get();
 
-          prefs.setString("refresh_token",
-              "Bearer ${json.decode(response.body)["refresh_token"]}");
-
-          prefs.setStringList("user", [
-            json.decode(response.body)["id"].toString(),
-            json.decode(response.body)["role"].toString()
-          ]);
-
-          Timer(const Duration(seconds: 2), () {
-            setState(() {
-              _isLoading = false;
-            });
-            Navigator.push(context,
-                MaterialPageRoute(builder: (context) => const HomePage()));
-          });
-        } else {
+        prefs.setStringList("user",
+            [user.email.toString(), userDb.docs.first.get("role").toString()]);
+        Timer(const Duration(seconds: 2), () {
           setState(() {
             _isLoading = false;
           });
-          showInSnackBar(
-              'Username ou Senha inválidos, Por favor tente novamente.');
-        }
+          Navigator.push(context,
+              MaterialPageRoute(builder: (context) => const HomePage()));
+        });
       } catch (e) {
         setState(() {
           _isLoading = false;
@@ -351,62 +319,6 @@ class _LoginPageState extends State<LoginPage> {
         _isLoading = false;
       });
       showInSnackBar('Por favor, preencha os campos obrigatórios');
-    }
-  }
-
-  signInGoogle() async {
-    GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
-    if (googleUser != null) {
-      final GoogleSignInAuthentication? googleSignInAuthentication =
-          await googleUser.authentication;
-
-      final idToken = googleSignInAuthentication?.idToken;
-      final accessToken = googleSignInAuthentication?.accessToken;
-
-      final credential = GoogleAuthProvider.credential(
-          accessToken: accessToken, idToken: idToken);
-
-      UserCredential userCredential =
-          await FirebaseAuth.instance.signInWithCredential(credential);
-
-      var body = jsonEncode({
-        'username': userCredential.user!.email!,
-        'password': userCredential.user!.uid
-      });
-      var response = await http.post(Uri.parse("${Config.api}/users/login"),
-          body: body,
-          headers: {
-            "Accept": "application/json",
-            "Content-type": "application/json"
-          });
-      if (response.statusCode == 200) {
-        SharedPreferences prefs = await SharedPreferences.getInstance();
-        prefs.setString(
-            "token", "Bearer ${json.decode(response.body)["token"]}");
-
-        prefs.setString("refresh_token",
-            "Bearer ${json.decode(response.body)["refresh_token"]}");
-
-        prefs.setStringList("user", [
-          json.decode(response.body)["id"].toString(),
-          json.decode(response.body)["role"].toString()
-        ]);
-
-        Timer(const Duration(seconds: 2), () {
-          setState(() {
-            _isLoading = false;
-          });
-          Navigator.push(context,
-              MaterialPageRoute(builder: (context) => const HomePage()));
-        });
-      } else {
-        Timer(Duration(seconds: 2), () {
-          Navigator.push(
-              context,
-              MaterialPageRoute(
-                  builder: (context) => NewUser(user: userCredential.user)));
-        });
-      }
     }
   }
 }

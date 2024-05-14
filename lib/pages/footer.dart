@@ -1,8 +1,8 @@
 import 'package:app_movie/config/config.dart';
+import 'package:app_movie/pages/home_page.dart';
 import 'package:app_movie/pages/categories.dart';
 import 'package:app_movie/pages/configuration.dart';
 import 'package:app_movie/pages/favorites.dart';
-import 'package:app_movie/pages/home.dart';
 import 'package:app_movie/pages/triggers.dart';
 import 'package:flutter/material.dart';
 

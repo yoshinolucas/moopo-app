@@ -1,12 +1,14 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:app_movie/pages/content_list.dart';
+import 'package:app_movie/pages/search.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:app_movie/components/custom_snackbar.dart';
 import 'package:app_movie/config/config.dart';
 import 'package:app_movie/entities/content.dart';
-import 'package:app_movie/pages/footer.dart';
-import 'package:app_movie/pages/content_list.dart';
 import 'package:app_movie/pages/content_page.dart';
-import 'package:app_movie/pages/search.dart';
+import 'package:app_movie/pages/footer.dart';
 import 'package:app_movie/repositories/content_repository.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -82,7 +84,6 @@ class _HomePageState extends State<HomePage> {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     setState(() {
       user = prefs.getStringList("user");
-      token = prefs.getString("token");
     });
     await fetchMovies();
     movies = await ContentRepository.fetchContents(1, Config.movie);
@@ -120,78 +121,76 @@ class _HomePageState extends State<HomePage> {
       favoritesAnimes = [];
     });
 
-    var response = await http.get(
-        Uri.parse("${Config.api}/favorites/list?id=${user![Config.id]}"),
-        headers: {
-          "Accept": "application/json",
-          "content-type": "application/json",
-          "Authorization": token!
-        });
-    if (response.statusCode == 200) {
+    var db = FirebaseFirestore.instance;
+    var favorites = await db
+        .collection("favorites")
+        .where("idUser", isEqualTo: user![Config.id])
+        .get();
+
+    if (favorites.docs.isNotEmpty) {
       setState(() {
-        for (var favorite in json.decode(response.body)) {
-          if (favorite["origin"] == Config.movie) {
+        favorites.docs.forEach((favorite) {
+          if (favorite.get("origin") == Config.movie) {
             favoritesMovies!.add(favorite["idContent"]);
           }
-          if (favorite["origin"] == Config.serie) {
+          if (favorite.get("origin") == Config.serie) {
             favoritesSeries!.add(favorite["idContent"]);
           }
-          if (favorite["origin"] == Config.anime) {
+          if (favorite.get("origin") == Config.anime) {
             favoritesAnimes!.add(favorite["idContent"]);
           }
-        }
-        _isLoading = false;
-        _indexMovie = -1;
-        _indexAnime = -1;
-        _indexSerie = -1;
+        });
       });
     }
-  }
 
-  void showInSnackBar(msg) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(msg, style: TextStyle(color: Colors.white)),
-        duration: const Duration(milliseconds: 3600),
-        backgroundColor: Config.primaryColor,
-      ),
-    );
+    setState(() {
+      _isLoading = false;
+      _indexMovie = -1;
+      _indexAnime = -1;
+      _indexSerie = -1;
+    });
   }
 
   addFavorite(content, origin) async {
     setState(() {
       _isLoading = true;
     });
-    var body = jsonEncode(
-        {'idUser': user![Config.id], 'idContent': content, 'origin': origin});
-    var response = await http
-        .post(Uri.parse("${Config.api}/favorites/add"), body: body, headers: {
-      "Accept": "application/json",
-      "content-type": "application/json",
-      "Authorization": token!
-    });
-    if (response.statusCode == 200) {
+    var favorite = {
+      'idUser': user![Config.id],
+      'idContent': content,
+      'origin': origin
+    };
+    var db = FirebaseFirestore.instance;
+    db.collection("favorites").add(favorite).then((value) {
       fetchFavorites();
-      showInSnackBar('Adicionado aos favoritos com sucesso.');
-    }
+
+      Timer(
+          const Duration(milliseconds: 200),
+          () => CustomSnackBar.show(
+              context, 'Adicionado aos favoritos com sucesso.'));
+    });
   }
 
   removeFavorite(content, origin) async {
     setState(() {
       _isLoading = true;
     });
-    var response = await http.delete(
-        Uri.parse(
-            "${Config.api}/favorites/delete?user=${user![Config.id]}&content=$content&origin=$origin"),
-        headers: {
-          "Accept": "application/json",
-          "content-type": "application/json",
-          "Authorization": token!
-        });
-    if (response.statusCode == 200) {
-      fetchFavorites();
-      showInSnackBar('Removido dos favoritos com sucesso.');
-    }
+    var db = FirebaseFirestore.instance;
+    var querySnapshot = await db
+        .collection("favorites")
+        .where("idUser", isEqualTo: user![Config.id])
+        .where("idContent", isEqualTo: content)
+        .where("origin", isEqualTo: origin)
+        .get();
+    querySnapshot.docs.forEach((doc) async {
+      await doc.reference.delete();
+    });
+
+    fetchFavorites();
+    Timer(
+        const Duration(milliseconds: 200),
+        () => CustomSnackBar.show(
+            context, 'Removido dos favoritos com sucesso.'));
   }
 
   reset() {
@@ -608,7 +607,10 @@ class _HomePageState extends State<HomePage> {
             title: Image.asset(Config.shortLogoWhite),
             actions: [
               IconButton(
-                icon: const Icon(Icons.search),
+                icon: const Icon(
+                  Icons.search,
+                  color: Colors.white,
+                ),
                 onPressed: () {
                   Navigator.push(
                       context,

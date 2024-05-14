@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:app_movie/config/config.dart';
 import 'package:app_movie/pages/footer.dart';
 import 'package:app_movie/pages/perfil.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
@@ -19,6 +20,7 @@ class EditUser extends StatefulWidget {
 }
 
 class _EditUserState extends State<EditUser> {
+  String? id;
   final username = TextEditingController();
   final firstName = TextEditingController();
   final lastName = TextEditingController();
@@ -31,6 +33,7 @@ class _EditUserState extends State<EditUser> {
   String msgSnackbar = '';
   String? image;
   bool _isLoadingImage = false;
+  FirebaseFirestore db = FirebaseFirestore.instance;
 
   @override
   void initState() {
@@ -52,27 +55,22 @@ class _EditUserState extends State<EditUser> {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     setState(() {
       user = prefs.getStringList("user");
-      token = prefs.getString("token");
     });
 
-    var response = await http.get(
-        Uri.parse("${Config.api}/users/details?id=${user![Config.id]}"),
-        headers: {
-          "Accept": "application/json",
-          "content-type": "application/json",
-          "Authorization": token!
-        });
-    if (response.statusCode == 200) {
-      var responseJson = json.decode(response.body);
-      setState(() {
-        username.text = responseJson['username'];
-        firstName.text = responseJson['firstName'];
-        lastName.text = responseJson['lastName'] ?? '';
-        email.text = responseJson['email'];
-        image = responseJson['image'];
-        _isLoaded = true;
-      });
-    }
+    var userDb = await db
+        .collection("users")
+        .where("email", isEqualTo: user![Config.id])
+        .get();
+
+    setState(() {
+      id = userDb.docs.first.id;
+      username.text = userDb.docs.first.get("username");
+      firstName.text = userDb.docs.first.get("firstName");
+      lastName.text = userDb.docs.first.get("lastName") ?? '';
+      email.text = userDb.docs.first.get("email");
+      image = userDb.docs.first.get("image");
+      _isLoaded = true;
+    });
   }
 
   updateUser() async {
@@ -82,32 +80,28 @@ class _EditUserState extends State<EditUser> {
     if (username.text.isNotEmpty &&
         email.text.isNotEmpty &&
         firstName.text.isNotEmpty) {
-      var body = json.encode({
+      var body = {
         "username": username.text,
         "email": email.text,
         "firstName": firstName.text,
         "lastName": lastName.text,
         "image": image
-      });
-      var response = await http.put(
-          Uri.parse("${Config.api}/users/update?id=${user![Config.id]}"),
-          body: body,
-          headers: {
-            "Accept": "application/json",
-            "content-type": "application/json",
-            "Authorization": token!
-          });
-      if (response.statusCode == 200) {
+      };
+      var userDb = await db.collection("users").doc(id);
+
+      userDb.update(body).then((value) {
         Timer(const Duration(seconds: 2), () {
-          Navigator.push(context,
-              MaterialPageRoute(builder: (context) => const PerfilPage()));
+          setState(() {
+            _isLoading = false;
+          });
+          Navigator.of(context).pop(true);
         });
-      } else {
+      }).onError((error, stackTrace) {
         setState(() {
           _isLoading = false;
         });
         showInSnackBar('Erro ao atualizar. Tente novamente mais tarde.');
-      }
+      });
     } else {
       setState(() {
         _isLoading = false;
@@ -190,7 +184,7 @@ class _EditUserState extends State<EditUser> {
                                           child: CircularProgressIndicator(
                                               color: Config.primaryColor),
                                         )
-                                      : image == null
+                                      : image!.isEmpty
                                           ? const Row(
                                               mainAxisAlignment:
                                                   MainAxisAlignment.center,
@@ -244,11 +238,6 @@ class _EditUserState extends State<EditUser> {
                                   controller: firstName,
                                   style:
                                       const TextStyle(color: Config.textColor),
-                                  decoration: const InputDecoration(
-                                    border: InputBorder.none,
-                                    isDense: true, // Added this
-                                    contentPadding: EdgeInsets.all(15),
-                                  ),
                                 ),
                               ),
                             ],
@@ -271,11 +260,6 @@ class _EditUserState extends State<EditUser> {
                                   style:
                                       const TextStyle(color: Config.textColor),
                                   controller: lastName,
-                                  decoration: const InputDecoration(
-                                    border: InputBorder.none,
-                                    isDense: true, // Added this
-                                    contentPadding: EdgeInsets.all(15),
-                                  ),
                                 ),
                               ),
                             ],
@@ -294,11 +278,6 @@ class _EditUserState extends State<EditUser> {
                         style: const TextStyle(color: Config.textColor),
                         cursorColor: Config.primaryColor,
                         controller: username,
-                        decoration: const InputDecoration(
-                          border: InputBorder.none,
-                          isDense: true, // Added this
-                          contentPadding: EdgeInsets.all(15),
-                        ),
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -313,11 +292,6 @@ class _EditUserState extends State<EditUser> {
                         cursorColor: Config.primaryColor,
                         autocorrect: false,
                         controller: email,
-                        decoration: const InputDecoration(
-                          border: InputBorder.none,
-                          isDense: true, // Added this
-                          contentPadding: EdgeInsets.all(15),
-                        ),
                       ),
                     ),
                     const SizedBox(
@@ -383,7 +357,9 @@ class _EditUserState extends State<EditUser> {
                                           ),
                                         )
                                       : const Text('Salvar',
-                                          style: TextStyle(fontSize: 18))),
+                                          style: TextStyle(
+                                              fontSize: 18,
+                                              color: Colors.white))),
                             ),
                           ),
                         )

@@ -28,7 +28,21 @@ class Config {
   static String logo = "lib/assets/moopo-logo.png";
   static String logo2 = "lib/assets/logo2.png";
 
-  static Color? primaryColor = Color.fromARGB(255, 158, 41, 187);
+  static const MaterialColor primaryColor = MaterialColor(
+    0xFF9E29BB, // Valor hexadeciamal da sua cor
+    <int, Color>{
+      50: Color(0xFF9E29BB),
+      100: Color(0xFF9E29BB),
+      200: Color(0xFF9E29BB),
+      300: Color(0xFF9E29BB),
+      400: Color(0xFF9E29BB),
+      500: Color(0xFF9E29BB),
+      600: Color(0xFF9E29BB),
+      700: Color(0xFF9E29BB),
+      800: Color(0xFF9E29BB),
+      900: Color(0xFF9E29BB),
+    },
+  );
   static Color? primaryColor2 = Color.fromARGB(255, 201, 136, 244);
   static Color? secondaryColor = Color.fromARGB(255, 245, 184, 31);
   static Color? inputColor = const Color.fromARGB(255, 234, 234, 234);
