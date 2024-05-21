@@ -75,6 +75,7 @@ class _RegisterPageState extends State<RegisterPage> {
               email: email.text,
               password: pass.text,
             );
+            // ignore: unused_local_variable
             User? userAuth = userCredential.user;
 
             db.collection("users").add(user).then((value) => {

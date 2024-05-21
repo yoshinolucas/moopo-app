@@ -296,6 +296,7 @@ class _LoginPageState extends State<LoginPage> {
 
       final UserCredential userCredential =
           await _auth.signInWithCredential(credential);
+      // ignore: unused_local_variable
       final User? user = userCredential.user;
 
       var userDb = await db
