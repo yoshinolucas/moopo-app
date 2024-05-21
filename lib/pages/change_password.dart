@@ -1,9 +1,10 @@
 import 'dart:async';
 
 import 'package:app_movie/config/config.dart';
-import 'package:app_movie/pages/change_password_token.dart';
+import 'package:app_movie/pages/login_page.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 
 class ChangePassword extends StatefulWidget {
   const ChangePassword({super.key});
@@ -17,44 +18,40 @@ class _ChangePasswordState extends State<ChangePassword> {
   bool _isLoading = false;
 
   String msgSnackbar = '';
+  FirebaseFirestore db = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
 
   sendEmail() async {
     setState(() {
       _isLoading = true;
     });
     if (emailUser.text.isNotEmpty) {
-      var response = await http.post(Uri.parse(
-          "${Config.api}/users/token_change_pass?email=${emailUser.text}"));
-
-      if (response.statusCode == 200) {
+      try {
+        await _auth.sendPasswordResetEmail(email: emailUser.text);
         Timer(const Duration(seconds: 3), () {
           setState(() {
             _isLoading = false;
           });
-          Navigator.push(
-              context,
-              MaterialPageRoute(
-                  builder: (context) => const ChangePasswordToken()));
+          showInSnackBar("Email para redefinição de senha enviado com sucesso");
+          Navigator.push(context,
+              MaterialPageRoute(builder: (context) => const LoginPage()));
         });
-      } else {
+      } catch (e) {
         setState(() {
-          msgSnackbar =
-              "Nenhum usuário encontrado. Verifique novamente o e-mail digitado.";
           _isLoading = false;
         });
-        showInSnackBar();
+        showInSnackBar(
+            "Nenhum usuário encontrado. Verifique novamente o e-mail digitado.");
       }
     } else {
-      setState(() {
-        msgSnackbar = 'Por favor, Informe o seu e-mail cadastrado';
-      });
+      showInSnackBar('Por favor, Informe o seu e-mail cadastrado');
     }
   }
 
-  void showInSnackBar() {
+  void showInSnackBar(msg) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(msgSnackbar, style: TextStyle(color: Colors.white)),
+        content: Text(msg, style: TextStyle(color: Colors.white)),
         duration: const Duration(milliseconds: 3600),
         backgroundColor: Config.primaryColor,
       ),
@@ -118,9 +115,6 @@ class _ChangePasswordState extends State<ChangePassword> {
                     cursorColor: Config.primaryColor,
                     style: const TextStyle(color: Config.textColor),
                     decoration: const InputDecoration(
-                      border: InputBorder.none,
-                      contentPadding: EdgeInsets.all(15),
-                      isDense: true,
                       hintText: "Email",
                     ),
                   )),
@@ -151,7 +145,8 @@ class _ChangePasswordState extends State<ChangePassword> {
                               ),
                             )
                           : const Text('Enviar',
-                              style: TextStyle(fontSize: 16))),
+                              style: TextStyle(
+                                  fontSize: 16, color: Colors.white))),
                 ),
               )
             ],

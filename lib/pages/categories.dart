@@ -101,7 +101,10 @@ class _CategoriesPageState extends State<CategoriesPage> {
                     MaterialPageRoute(
                         builder: (contexxt) => const SearchPage()));
               },
-              icon: const Icon(Icons.search)),
+              icon: const Icon(
+                Icons.search,
+                color: Colors.white,
+              )),
         ],
       ),
       body: renderCategories(),

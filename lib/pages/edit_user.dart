@@ -1,15 +1,13 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:app_movie/config/config.dart';
 import 'package:app_movie/pages/footer.dart';
-import 'package:app_movie/pages/perfil.dart';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:http/http.dart' as http;
 import 'package:firebase_storage/firebase_storage.dart';
 
 class EditUser extends StatefulWidget {
@@ -148,6 +146,7 @@ class _EditUserState extends State<EditUser> {
             child: const Icon(
               Icons.arrow_back_ios,
               size: 18,
+              color: Colors.white,
             ),
             onTap: () {
               Navigator.pop(context);

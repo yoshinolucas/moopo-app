@@ -5,12 +5,11 @@ import 'package:app_movie/components/custom_snackbar.dart';
 import 'package:app_movie/config/config.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:app_movie/pages/home_page.dart';
 import 'package:app_movie/pages/login_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class RegisterPage extends StatefulWidget {
-  final User? user;
+  final Map<String, dynamic>? user;
   const RegisterPage({super.key, this.user});
 
   @override
@@ -18,7 +17,6 @@ class RegisterPage extends StatefulWidget {
 }
 
 class _RegisterPageState extends State<RegisterPage> {
-  final FirebaseAuth _auth = FirebaseAuth.instance;
   final firstName = TextEditingController();
   final lastName = TextEditingController();
   final email = TextEditingController();
@@ -27,10 +25,18 @@ class _RegisterPageState extends State<RegisterPage> {
   bool signInThird = false;
   bool _isLoading = false;
   String msgSnackbar = '';
+  FirebaseFirestore db = FirebaseFirestore.instance;
 
   @override
   void initState() {
     super.initState();
+    if (widget.user != null) {
+      signInThird = true;
+      setState(() {
+        email.text = widget.user!["email"];
+        firstName.text = widget.user!["firstName"];
+      });
+    }
   }
 
   postUser() async {
@@ -39,41 +45,21 @@ class _RegisterPageState extends State<RegisterPage> {
     });
     if (username.text.isNotEmpty &&
         (email.text.isNotEmpty) &&
-        (pass.text.isNotEmpty) &&
         (firstName.text.isNotEmpty)) {
+      SharedPreferences prefs = await SharedPreferences.getInstance();
       Map<String, dynamic> user = {
         "username": username.text,
         "email": email.text,
-        "password": pass.text,
         "firstName": firstName.text,
         "lastName": lastName.text,
         "role": 2,
         "active": true,
         "image": ""
       };
-
-      try {
-        UserCredential userCredential =
-            await FirebaseAuth.instance.createUserWithEmailAndPassword(
-          email: email.text,
-          password: pass.text,
-        );
-        User? userAuth = userCredential.user;
-
-        var db = FirebaseFirestore.instance;
-        SharedPreferences prefs = await SharedPreferences.getInstance();
-
-        var userDb = await db
-            .collection("users")
-            .where("email", isEqualTo: userAuth!.email)
-            .get();
-
-        prefs.setStringList("user", [
-          userAuth.email.toString(),
-          userDb.docs.first.get("role").toString()
-        ]);
+      if (signInThird) {
         db.collection("users").add(user).then((value) => {
               Timer(const Duration(seconds: 2), () {
+                prefs.setStringList("user", [email.text, "2"]);
                 setState(() {
                   _isLoading = false;
                 });
@@ -81,13 +67,38 @@ class _RegisterPageState extends State<RegisterPage> {
                     MaterialPageRoute(builder: (context) => const LoginPage()));
               })
             });
-      } catch (e) {
-        setState(() {
-          _isLoading = false;
-        });
-        Timer(const Duration(milliseconds: 200), () {
-          CustomSnackBar.show(context, "Senha deve ter ao menos 6 caractéres");
-        });
+      } else {
+        if (pass.text.isNotEmpty) {
+          try {
+            UserCredential userCredential =
+                await FirebaseAuth.instance.createUserWithEmailAndPassword(
+              email: email.text,
+              password: pass.text,
+            );
+            User? userAuth = userCredential.user;
+
+            db.collection("users").add(user).then((value) => {
+                  Timer(const Duration(seconds: 2), () {
+                    prefs.setStringList("user", [email.text, "2"]);
+                    setState(() {
+                      _isLoading = false;
+                    });
+                    Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (context) => const LoginPage()));
+                  })
+                });
+          } catch (e) {
+            setState(() {
+              _isLoading = false;
+            });
+            Timer(const Duration(milliseconds: 200), () {
+              CustomSnackBar.show(
+                  context, "Senha deve ter ao menos 6 caractéres");
+            });
+          }
+        }
       }
     }
   }
@@ -154,7 +165,6 @@ class _RegisterPageState extends State<RegisterPage> {
                   controller: email,
                   style: const TextStyle(color: Config.textColor),
                   decoration: const InputDecoration(
-                    fillColor: Colors.blue,
                     prefixIcon: Icon(Icons.email),
                     hintText: 'E-mail',
                   ),
@@ -169,9 +179,7 @@ class _RegisterPageState extends State<RegisterPage> {
                   autocorrect: false,
                   keyboardType: TextInputType.visiblePassword,
                   controller: pass,
-                  // style: const TextStyle(color: Config.textColor),
                   decoration: const InputDecoration(
-                    fillColor: Colors.blue,
                     prefixIcon: Icon(Icons.lock),
                     hintText: 'Senha',
                   ),

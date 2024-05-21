@@ -1,12 +1,8 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:app_movie/config/config.dart';
 import 'package:app_movie/entities/trigger.dart';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:http/http.dart' as http;
 
 class NewTrigger extends StatefulWidget {
   const NewTrigger({super.key});

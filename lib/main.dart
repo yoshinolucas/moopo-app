@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:app_movie/config/config.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:app_movie/pages/home_page.dart';
 import 'package:app_movie/pages/login_page.dart';
-import 'package:app_movie/pages/register_page.dart';
 import 'firebase_options.dart';
 
 void main() async {
@@ -38,6 +36,13 @@ class MyApp extends StatelessWidget {
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(24)),
           isDense: true, // Added this
           contentPadding: const EdgeInsets.all(15),
+
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(24),
+            borderSide: BorderSide(
+              color: Config.primaryColor,
+            ),
+          ),
         ),
       ),
       home: const LoginPage(),

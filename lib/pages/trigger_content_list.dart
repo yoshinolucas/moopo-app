@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:convert';
 
+import 'package:app_movie/components/custom_snackbar.dart';
 import 'package:app_movie/config/config.dart';
 import 'package:app_movie/entities/content.dart';
 import 'package:app_movie/pages/footer.dart';
@@ -7,9 +9,9 @@ import 'package:app_movie/pages/content_list.dart';
 import 'package:app_movie/pages/content_page.dart';
 import 'package:app_movie/pages/search.dart';
 import 'package:app_movie/repositories/content_repository.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:http/http.dart' as http;
 
 class TriggerContentList extends StatefulWidget {
   final String trigger;
@@ -39,6 +41,8 @@ class _TriggerContentListState extends State<TriggerContentList> {
   final _heigthCard = 200.0;
   final _sizeFavIcon = 20.0;
 
+  FirebaseFirestore db = FirebaseFirestore.instance;
+
   @override
   void initState() {
     super.initState();
@@ -46,37 +50,35 @@ class _TriggerContentListState extends State<TriggerContentList> {
   }
 
   fetchContents() async {
-    var response = await http.get(
-        Uri.parse("${Config.api}/triggers/list_contents?id=${widget.trigger}"),
-        headers: {
-          "Accept": "application/json",
-          "content-type": "application/json",
-          "Authorization": token!
-        });
-    if (response.statusCode == 200) {
-      for (var content in json.decode(response.body)) {
-        if (content["origin"] == Config.movie) {
+    var triggersDb = await db
+        .collection("triggers_content")
+        .where("trigger", isEqualTo: widget.trigger)
+        .get();
+
+    if (triggersDb.docs.isNotEmpty) {
+      Future.forEach(triggersDb.docs, (element) async {
+        if (element.get("origin") == Config.movie) {
           Content movie = await ContentRepository.fetchContentById(
-              content["id"], Config.movie);
+              element.get("content"), Config.movie);
           setState(() {
             movies!.add(movie);
           });
         }
-        if (content["origin"] == Config.serie) {
+        if (element.get("origin") == Config.serie) {
           Content serie = await ContentRepository.fetchContentById(
-              content["id"], Config.serie);
+              element.get("content"), Config.serie);
           setState(() {
             series!.add(serie);
           });
         }
-        if (content["origin"] == Config.anime) {
+        if (element.get("origin") == Config.anime) {
           Content anime = await ContentRepository.fetchContentById(
-              content["id"], Config.anime);
+              element.get("content"), Config.anime);
           setState(() {
             animes!.add(anime);
           });
         }
-      }
+      });
     }
   }
 
@@ -93,56 +95,6 @@ class _TriggerContentListState extends State<TriggerContentList> {
     // });
   }
 
-  fetchFavorites() async {
-    setState(() {
-      favoritesMovies = [];
-      favoritesSeries = [];
-      favoritesAnimes = [];
-    });
-
-    var response = await http.get(
-        Uri.parse("${Config.api}/favorites/list?id=${user![Config.id]}"),
-        headers: {
-          "Accept": "application/json",
-          "content-type": "application/json",
-          "Authorization": token!
-        });
-    if (response.statusCode == 200) {
-      setState(() {
-        for (var favorite in json.decode(response.body)) {
-          if (favorite["origin"] == Config.movie) {
-            favoritesMovies!.add(favorite["idContent"]);
-          }
-          if (favorite["origin"] == Config.serie) {
-            favoritesSeries!.add(favorite["idContent"]);
-          }
-          if (favorite["origin"] == Config.anime) {
-            favoritesAnimes!.add(favorite["idContent"]);
-          }
-        }
-        _isLoading = false;
-      });
-    }
-  }
-
-  addFavorite(content, origin) async {
-    setState(() {
-      _isLoading = true;
-    });
-    var body = jsonEncode(
-        {'idUser': user![Config.id], 'idContent': content, 'origin': origin});
-    var response = await http
-        .post(Uri.parse("${Config.api}/favorites/add"), body: body, headers: {
-      "Accept": "application/json",
-      "content-type": "application/json",
-      "Authorization": token!
-    });
-    if (response.statusCode == 200) {
-      fetchFavorites();
-      showInSnackBar('Adicionado aos favoritos com sucesso.');
-    }
-  }
-
   void showInSnackBar(msg) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -153,22 +105,82 @@ class _TriggerContentListState extends State<TriggerContentList> {
     );
   }
 
+  fetchFavorites() async {
+    setState(() {
+      favoritesMovies = [];
+      favoritesSeries = [];
+      favoritesAnimes = [];
+    });
+
+    var favorites = await db
+        .collection("favorites")
+        .where("idUser", isEqualTo: user![Config.id])
+        .get();
+
+    if (favorites.docs.isNotEmpty) {
+      setState(() {
+        favorites.docs.forEach((favorite) {
+          if (favorite.get("origin") == Config.movie) {
+            favoritesMovies!.add(favorite["idContent"]);
+          }
+          if (favorite.get("origin") == Config.serie) {
+            favoritesSeries!.add(favorite["idContent"]);
+          }
+          if (favorite.get("origin") == Config.anime) {
+            favoritesAnimes!.add(favorite["idContent"]);
+          }
+        });
+      });
+    }
+
+    setState(() {
+      _isLoading = false;
+      // _indexMovie = -1;
+      // _indexAnime = -1;
+      // _indexSerie = -1;
+    });
+  }
+
+  addFavorite(content, origin) async {
+    setState(() {
+      _isLoading = true;
+    });
+    var favorite = {
+      'idUser': user![Config.id],
+      'idContent': content,
+      'origin': origin
+    };
+
+    db.collection("favorites").add(favorite).then((value) {
+      fetchFavorites();
+
+      Timer(
+          const Duration(milliseconds: 200),
+          () => CustomSnackBar.show(
+              context, 'Adicionado aos favoritos com sucesso.'));
+    });
+  }
+
   removeFavorite(content, origin) async {
     setState(() {
       _isLoading = true;
     });
-    var response = await http.delete(
-        Uri.parse(
-            "${Config.api}/favorites/delete?user=${user![Config.id]}&content=$content&origin=$origin"),
-        headers: {
-          "Accept": "application/json",
-          "content-type": "application/json",
-          "Authorization": token!
-        });
-    if (response.statusCode == 200) {
-      fetchFavorites();
-      showInSnackBar('Removido dos favoritos com sucesso.');
-    }
+
+    var querySnapshot = await db
+        .collection("favorites")
+        .where("idUser", isEqualTo: user![Config.id])
+        .where("idContent", isEqualTo: content)
+        .where("origin", isEqualTo: origin)
+        .get();
+    querySnapshot.docs.forEach((doc) async {
+      await doc.reference.delete();
+    });
+
+    fetchFavorites();
+    Timer(
+        const Duration(milliseconds: 200),
+        () => CustomSnackBar.show(
+            context, 'Removido dos favoritos com sucesso.'));
   }
 
   renderMovies() {
@@ -498,6 +510,7 @@ class _TriggerContentListState extends State<TriggerContentList> {
           child: const Icon(
             Icons.arrow_back_ios,
             size: 18,
+            color: Colors.white,
           ),
           onTap: () {
             Navigator.pop(context);
@@ -516,7 +529,10 @@ class _TriggerContentListState extends State<TriggerContentList> {
                     MaterialPageRoute(
                         builder: (contexxt) => const SearchPage()));
               },
-              icon: const Icon(Icons.search)),
+              icon: const Icon(
+                Icons.search,
+                color: Colors.white,
+              )),
         ],
       ),
       body: _isLoaded

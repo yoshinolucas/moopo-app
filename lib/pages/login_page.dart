@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:app_movie/config/config.dart';
@@ -8,8 +7,6 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:app_movie/pages/home_page.dart';
 import 'package:app_movie/pages/register_page.dart';
 import 'package:flutter/material.dart';
-
-import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
@@ -27,6 +24,8 @@ class _LoginPageState extends State<LoginPage> {
   bool _isLoaded = false;
   bool _isLoading = false;
   String _actualImage = Config.logo;
+  final GoogleSignIn _googleSignIn = GoogleSignIn();
+  FirebaseFirestore db = FirebaseFirestore.instance;
 
   verificateUserSession() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
@@ -55,7 +54,7 @@ class _LoginPageState extends State<LoginPage> {
         setState(() {
           _isLoaded = true;
         });
-        showInSnackBar('Sessão expirada, por favor faça o login novamente.');
+        // showInSnackBar('Sessão expirada, por favor faça o login novamente.');
       }
     } catch (e) {
       setState(() {
@@ -124,7 +123,7 @@ class _LoginPageState extends State<LoginPage> {
                           cursorColor: Config.primaryColor,
                           controller: username,
                           style: const TextStyle(color: Config.textColor),
-                          decoration: const InputDecoration(
+                          decoration: InputDecoration(
                             prefixIcon: Icon(Icons.email),
                             hintText: 'E-mail',
                           ),
@@ -151,11 +150,11 @@ class _LoginPageState extends State<LoginPage> {
                         alignment: Alignment.centerRight,
                         child: TextButton(
                             onPressed: () {
-                              // Navigator.push(
-                              //     context,
-                              //     MaterialPageRoute(
-                              //         builder: (context) =>
-                              //             const ChangePassword()));
+                              Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                      builder: (context) =>
+                                          const ChangePassword()));
                             },
                             child: Text(
                               "Esqueceu a senha?",
@@ -227,7 +226,7 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                       InkWell(
                         onTap: () {
-                          // signInGoogle();
+                          signInGoogle();
                         },
                         child: Container(
                             decoration: BoxDecoration(
@@ -279,6 +278,55 @@ class _LoginPageState extends State<LoginPage> {
                 child: Image.asset(_actualImage)));
   }
 
+  signInGoogle() async {
+    setState(() {
+      _isLoading = true;
+    });
+    try {
+      // await _googleSignIn.signInSilently();
+      final GoogleSignInAccount? googleUser =
+          await _googleSignIn.signInSilently();
+
+      final GoogleSignInAuthentication googleAuth =
+          await googleUser!.authentication;
+      final AuthCredential credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+
+      final UserCredential userCredential =
+          await _auth.signInWithCredential(credential);
+      final User? user = userCredential.user;
+
+      var userDb = await db
+          .collection("users")
+          .where("email", isEqualTo: googleUser.email)
+          .get();
+      if (userDb.docs.isNotEmpty) {
+        Timer(Duration(microseconds: 300), () {
+          Navigator.push(
+              context, MaterialPageRoute(builder: (context) => HomePage()));
+        });
+      } else {
+        var data = {
+          "email": googleUser.email,
+          "firstName": googleUser.displayName
+        };
+
+        Timer(Duration(microseconds: 300), () {
+          Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (context) => RegisterPage(user: data)));
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
   login() async {
     setState(() {
       _isLoading = true;
@@ -292,7 +340,6 @@ class _LoginPageState extends State<LoginPage> {
         User? user = userCredential.user;
         SharedPreferences prefs = await SharedPreferences.getInstance();
 
-        var db = FirebaseFirestore.instance;
         var userDb = await db
             .collection("users")
             .where("email", isEqualTo: user!.email)

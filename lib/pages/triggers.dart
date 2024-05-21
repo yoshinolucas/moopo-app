@@ -218,7 +218,7 @@ class _TriggersState extends State<Triggers> {
                               end: Alignment.bottomCenter,
                               colors: [
                                 Config.secondaryColor!,
-                                Config.primaryColor!
+                                Config.primaryColor
                               ],
                             )),
                             child: Padding(
@@ -319,7 +319,7 @@ class _TriggersState extends State<Triggers> {
                                   end: Alignment.bottomCenter,
                                   colors: [
                                     Config.secondaryColor!,
-                                    Config.primaryColor!
+                                    Config.primaryColor
                                   ],
                                 )),
                                 child: Padding(
@@ -399,7 +399,10 @@ class _TriggersState extends State<Triggers> {
                     MaterialPageRoute(
                         builder: (contexxt) => const SearchPage()));
               },
-              icon: const Icon(Icons.search)),
+              icon: const Icon(
+                Icons.search,
+                color: Colors.white,
+              )),
           user![Config.role] == '1'
               ? IconButton(
                   onPressed: () {

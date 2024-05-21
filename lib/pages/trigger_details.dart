@@ -2,13 +2,13 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:app_movie/components/animated_cliprect.dart';
+import 'package:app_movie/components/custom_snackbar.dart';
 import 'package:app_movie/config/config.dart';
 import 'package:app_movie/entities/feedback.dart';
-import 'package:app_movie/entities/trigger.dart';
 import 'package:app_movie/pages/new_trigger_content.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:http/http.dart' as http;
 
 class TriggerDetails extends StatefulWidget {
   final int origin;
@@ -22,15 +22,13 @@ class TriggerDetails extends StatefulWidget {
 }
 
 class _TriggerDetailsState extends State<TriggerDetails> {
-  List<Trigger> triggers = [];
+  List<dynamic> triggers = [];
   List<String>? user;
   String? token;
-  List<Map<String, dynamic>> exists = [];
-  List<Map<String, dynamic>> notExists = [];
   List<FeedbackCustom> feedbacks = [];
   bool _isLoaded = false;
   int limitSet = 2;
-  int triggerSet = 0;
+  String triggerSet = "0";
   final feedbackController = TextEditingController();
   bool _isLoading = false;
   bool _isLoadingFeedbacks = false;
@@ -43,33 +41,15 @@ class _TriggerDetailsState extends State<TriggerDetails> {
   String? currentFeedbackText;
   List<dynamic> favorites = [];
   List<String> openTriggers = [];
-  int _indexLike = -1;
+  String _indexLike = "-1";
   bool _openMoreTriggers = false;
   final searchText = TextEditingController();
+  FirebaseFirestore db = FirebaseFirestore.instance;
+
   @override
   void initState() {
     super.initState();
     getData();
-  }
-
-  addFavorite(trigger) async {
-    setState(() {
-      _isLoadingFavs = true;
-    });
-
-    var body = jsonEncode({'id_user': user![Config.id], 'id_trigger': trigger});
-    var response = await http.post(
-        Uri.parse("${Config.api}/triggers_favorites/add"),
-        body: body,
-        headers: {
-          "Accept": "application/json",
-          "content-type": "application/json",
-          "Authorization": token!
-        });
-    if (response.statusCode == 200) {
-      fetchFavorites();
-      showInSnackBar('Adicionado aos favoritos com sucesso.');
-    }
   }
 
   void showInSnackBar(msg) {
@@ -82,52 +62,71 @@ class _TriggerDetailsState extends State<TriggerDetails> {
     );
   }
 
-  fetchFavorites() async {
-    var response = await http.get(
-        Uri.parse(
-            "${Config.api}/triggers_favorites/list?id=${user![Config.id]}"),
-        headers: {
-          "Accept": "application/json",
-          "content-type": "application/json",
-          "Authorization": token!
-        });
-    if (response.statusCode == 200) {
+  fetchFavoritesTriggers() async {
+    var tf = await db
+        .collection("triggers_favorites")
+        .where("idUser", isEqualTo: user![Config.id])
+        .get();
+
+    if (tf.docs.isNotEmpty) {
       setState(() {
-        favorites = json.decode(response.body).cast<int>();
-        _isLoadingFavs = false;
+        favorites = tf.docs.map((v) => v.get("idTrigger") as String).toList();
       });
     } else {
-      throw Exception('Failed to load Favorites');
+      setState(() {
+        favorites = [];
+      });
     }
+    setState(() {
+      _isLoadingFavs = false;
+    });
   }
 
-  removeFavorite(trigger) async {
+  removeFavoriteTrigger(trigger) async {
     setState(() {
       _isLoadingFavs = true;
     });
+    var querySnapshot = await db
+        .collection("triggers_favorites")
+        .where("idUser", isEqualTo: user![Config.id])
+        .where("idTrigger", isEqualTo: trigger)
+        .get();
+    querySnapshot.docs.forEach((doc) async {
+      await doc.reference.delete();
+    });
+    fetchFavoritesTriggers();
+    Timer(
+        const Duration(milliseconds: 200),
+        () => CustomSnackBar.show(
+            context, 'Removido dos favoritos com sucesso.'));
+  }
 
-    var response = await http.delete(
-        Uri.parse(
-            "${Config.api}/triggers_favorites/delete?user=${user![Config.id]}&id=$trigger"),
-        headers: {
-          "Accept": "application/json",
-          "content-type": "application/json",
-          "Authorization": token!
-        });
-    if (response.statusCode == 200) {
-      fetchFavorites();
-      showInSnackBar('Removido dos favoritos com sucesso.');
-    }
+  addFavoriteTrigger(trigger) async {
+    setState(() {
+      _isLoadingFavs = true;
+    });
+    var body = {'idUser': user![Config.id], 'idTrigger': trigger};
+    db.collection("triggers_favorites").add(body).then((value) {
+      Timer(
+          const Duration(milliseconds: 200),
+          () => CustomSnackBar.show(
+              context, 'Adicionado aos favoritos com sucesso.'));
+      fetchFavoritesTriggers();
+    });
   }
 
   getData() async {
+    // setState(() {
+    //   _isLoaded = false;
+    //   openTriggers = [];
+    //   feedbacks = [];
+    // });
     SharedPreferences prefs = await SharedPreferences.getInstance();
     setState(() {
       user = prefs.getStringList("user");
-      token = prefs.getString("token");
     });
     await fetchTriggers();
-    await fetchFavorites();
+    await fetchFavoritesTriggers();
     await fetchFeedbacks(limitSet, triggerSet);
 
     setState(() {
@@ -139,79 +138,155 @@ class _TriggerDetailsState extends State<TriggerDetails> {
     setState(() {
       _isLoadingVotes = true;
     });
-
-    var response = await http.post(
-        Uri.parse(
-            "${Config.api}/triggers/vote?id=$trigger&content=${widget.content}&user=${user![Config.id]}&vote=$vote&origin=${widget.origin}"),
-        headers: {
-          "Accept": "application/json",
-          "content-type": "application/json",
-          "Authorization": token!
-        });
-    if (response.statusCode == 200) {
-      fetchTriggers();
-      showInSnackBar('Voto computado com sucesso.');
+    var removeVote = false;
+    var currentVote = await db
+        .collection("triggers_content")
+        .where("trigger", isEqualTo: trigger)
+        .where("content", isEqualTo: widget.content)
+        .where("user", isEqualTo: user![Config.id])
+        .where("origin", isEqualTo: widget.origin)
+        .get();
+    if (currentVote.docs.isNotEmpty) {
+      if (currentVote.docs.first.get("exists") == vote) removeVote = true;
+      currentVote.docs.first.reference.delete();
     }
+
+    if (!removeVote) {
+      db.collection("triggers_content").add({
+        "trigger": trigger,
+        "content": widget.content,
+        "user": user![Config.id],
+        "origin": widget.origin,
+        "exists": vote
+      }).then((value) {
+        showInSnackBar('Voto computado com sucesso.');
+      });
+    } else {
+      showInSnackBar('Voto retirado com sucesso');
+    }
+
+    fetchTriggers();
   }
 
   fetchTriggers() async {
-    int all = _openMoreTriggers ? 1 : 0;
-    var response = await http.get(
-        Uri.parse(
-            "${Config.api}/triggers/content?id=${widget.content}&user=${user![Config.id]}&origin=${widget.origin}&all=$all&search=${searchText.text}"),
-        headers: {
-          "Accept": "application/json",
-          "content-type": "application/json",
-          "Authorization": token!
-        });
-    if (response.statusCode == 200) {
-      setState(() {
-        exists = [];
-        notExists = [];
-        for (var item in json.decode(response.body)) {
-          exists.add({"total": item['exists'], "voted": item['votedExist']});
-          notExists.add(
-              {"total": item['notExists'], "voted": item['votedNotExist']});
+    var all = await db.collection("triggers").get();
+    List<dynamic> result = [];
+    if (all.docs.isNotEmpty) {
+      await Future.forEach(all.docs, (element) async {
+        var exists = {"total": 0, "voted": false};
+        var notExists = {"total": 0, "voted": false};
+        var query = await db
+            .collection("triggers_content")
+            .where("trigger", isEqualTo: element.id)
+            .where("content", isEqualTo: widget.content)
+            .where("origin", isEqualTo: widget.origin)
+            .get();
+
+        if (query.docs.isNotEmpty) {
+          var sumVotesExist = 0;
+          var sumVotesNotExist = 0;
+          var existVoted = false;
+          var notExistVoted = false;
+          query.docs.forEach((e) {
+            if (e.get("exists")) {
+              sumVotesExist++;
+              if (e.get("user") == user![Config.id]) {
+                existVoted = true;
+              }
+            } else {
+              sumVotesNotExist++;
+              if (e.get("user") == user![Config.id]) {
+                notExistVoted = true;
+              }
+            }
+          });
+          exists = {"voted": existVoted, "total": sumVotesExist};
+          notExists = {"voted": notExistVoted, "total": sumVotesNotExist};
         }
-        triggers = List<Trigger>.from(json
-            .decode(response.body)
-            .map((x) => Trigger.fromJson(x['trigger'])));
-        _isLoadingVotes = false;
-        _isLoadingTriggers = false;
+        var data = {
+          "id": element.id,
+          "name": element.get("name"),
+          "description": element.get("description"),
+          "exists": exists,
+          "notExists": notExists
+        };
+
+        result.add(data);
       });
+      result
+          .sort((a, b) => b["exists"]["total"].compareTo(a["exists"]["total"]));
     }
+    setState(() {
+      triggers = result;
+      _isLoadingVotes = false;
+      _isLoadingTriggers = false;
+    });
   }
 
   fetchFeedbacks(limit, trigger) async {
     setState(() {
       _isLoadingFeedbacks = true;
     });
-    var response = await http.get(
-        Uri.parse(
-            "${Config.api}/feedbacks/content?id=${widget.content}&user=${user![Config.id]}&limit=$limit&trigger=$trigger&origin=${widget.origin}"),
-        headers: {
-          "Accept": "application/json",
-          "content-type": "application/json",
-          "Authorization": token!
-        });
-    if (response.statusCode == 200) {
-      if (json.decode(response.body).isNotEmpty) {
-        setState(() {
-          feedbacks = List<FeedbackCustom>.from(json
-              .decode(response.body)
-              .map((x) => FeedbackCustom.fromJson(x)));
-          _isLoading = false;
-          triggerSet = trigger;
-          _isLoadingFeedbacks = false;
-          _isLoadingMore = false;
-        });
-      } else {
-        setState(() {
-          _isLoading = false;
-          _isLoadingFeedbacks = false;
-          _isLoadingMore = false;
-        });
-      }
+    var feedbacksDb = await db
+        .collection("feedbacks")
+        .where("origin", isEqualTo: widget.origin)
+        .where("content", isEqualTo: widget.content)
+        .get();
+    if (feedbacksDb.docs.isNotEmpty) {
+      List<FeedbackCustom> result = [];
+      Future.forEach(feedbacksDb.docs, (x) async {
+        var likedDb = await db
+            .collection("feedbacks_likes")
+            .where("feedback", isEqualTo: x.id)
+            .where("user", isEqualTo: user![Config.id])
+            .get();
+
+        var liked = likedDb.docs.length > 0;
+
+        var likesDb = await db
+            .collection("feedbacks_likes")
+            .where("feedback", isEqualTo: x.id)
+            .get();
+        var likes = 0;
+
+        if (likesDb.docs.isNotEmpty) {
+          likes = likesDb.docs.length;
+        }
+
+        var userDb = await db
+            .collection("users")
+            .where("email", isEqualTo: x.get("user"))
+            .get();
+
+        var data = {
+          "id": x.id,
+          "msg": x.get("msg"),
+          "trigger": x.get("trigger"),
+          "approved": x.get("approved"),
+          "origin": widget.origin,
+          "content": widget.content,
+          "user": x.get("user"),
+          "likes": likes,
+          "liked": liked,
+          "image": userDb.docs.first.get("image"),
+          "username": userDb.docs.first.get("username")
+        };
+
+        result.add(FeedbackCustom.fromJson(data));
+      });
+      setState(() {
+        feedbacks = result;
+        _isLoading = false;
+        triggerSet = trigger.toString();
+        _isLoadingFeedbacks = false;
+        _isLoadingMore = false;
+      });
+    } else {
+      setState(() {
+        _isLoading = false;
+        _isLoadingFeedbacks = false;
+        _isLoadingMore = false;
+      });
     }
   }
 
@@ -221,32 +296,30 @@ class _TriggerDetailsState extends State<TriggerDetails> {
     });
 
     if (feedbackController.text.isNotEmpty) {
-      var body = json.encode({
-        "id_trigger": trigger,
-        "id_content": widget.content,
-        "id_user": user![Config.id],
+      var body = {
+        "trigger": trigger,
+        "content": widget.content,
+        "user": user![Config.id],
         "msg": feedbackController.text,
-        "approved": 1,
+        "approved": true,
         "origin": widget.origin
-      });
-      var response = await http
-          .post(Uri.parse("${Config.api}/feedbacks/add"), body: body, headers: {
-        "Accept": "application/json",
-        "content-type": "application/json",
-        "Authorization": token!
-      });
-      if (response.statusCode == 200) {
+      };
+      db.collection("feedbacks").add(body).then((value) async {
         setState(() {
           feedbackController.text = '';
           _isLoadingComment = false;
+          feedbacks = [];
+          openTriggers = [];
         });
         showInSnackBar('Obrigado pelo seu comentário!');
-        fetchFeedbacks(limitSet, triggerSet);
-      }
+
+        await fetchFeedbacks(limitSet, triggerSet);
+      });
     } else {
       setState(() {
         _isLoadingComment = false;
       });
+      showInSnackBar('Por favor preencher algum comentário');
     }
   }
 
@@ -254,18 +327,10 @@ class _TriggerDetailsState extends State<TriggerDetails> {
     setState(() {
       _isLoading = true;
     });
+    var data = {"user": user![Config.id], "feedback": feedback};
+    await db.collection("feedbacks_likes").add(data);
 
-    var response = await http.post(
-        Uri.parse(
-            "${Config.api}/feedbacks/like?id=$feedback&user=${user![Config.id]}&origin=${widget.origin}"),
-        headers: {
-          "Accept": "application/json",
-          "content-type": "application/json",
-          "Authorization": token!
-        });
-    if (response.statusCode == 200) {
-      fetchFeedbacks(limitSet, triggerSet);
-    }
+    fetchFeedbacks(limitSet, triggerSet);
   }
 
   deslike(feedback) async {
@@ -273,37 +338,35 @@ class _TriggerDetailsState extends State<TriggerDetails> {
       _isLoading = true;
     });
 
-    var response = await http.delete(
-        Uri.parse(
-            "${Config.api}/feedbacks/deslike?id=$feedback&user=${user![Config.id]}&origin=${widget.origin}"),
-        headers: {
-          "Accept": "application/json",
-          "content-type": "application/json",
-          "Authorization": token!
-        });
-    if (response.statusCode == 200) {
-      fetchFeedbacks(limitSet, triggerSet);
+    var like = await db
+        .collection("feedbacks_likes")
+        .where("feedback", isEqualTo: feedback)
+        .where("user", isEqualTo: user![Config.id])
+        .get();
+    if (like.docs.first.exists) {
+      await like.docs.first.reference.delete();
     }
+
+    fetchFeedbacks(limitSet, triggerSet);
   }
 
   removeFeedback(id) async {
-    var response = await http.delete(
-        Uri.parse(
-            "${Config.api}/feedbacks/delete?id=$id&origin=${widget.origin}"),
-        headers: {
-          "Accept": "application/json",
-          "content-type": "application/json",
-          "Authorization": token!
-        });
-    if (response.statusCode == 200) {
-      showInSnackBar('Comentário removido com sucesso.');
-      fetchFeedbacks(limitSet, triggerSet);
+    var likes = await db
+        .collection("feedbacks_likes")
+        .where("feedback", isEqualTo: id)
+        .get();
+    if (likes.docs.first.exists) {
+      await likes.docs.first.reference.delete();
     }
+    await db.collection("feedbacks").doc(id).delete();
+
+    showInSnackBar('Comentário removido com sucesso.');
+    fetchFeedbacks(limitSet, triggerSet);
   }
 
   renderFeedbacks(index) {
     return AnimatedClipRect(
-      open: openTriggers.contains(triggers[index].id),
+      open: openTriggers.contains(triggers[index]["id"]),
       horizontalAnimation: false,
       verticalAnimation: true,
       alignment: Alignment.center,
@@ -318,11 +381,11 @@ class _TriggerDetailsState extends State<TriggerDetails> {
           TextField(
             onTap: () {
               setState(() {
-                currentFeedbackText = triggers[index].id;
+                currentFeedbackText = triggers[index]["id"];
               });
             },
             style: const TextStyle(color: Config.textColor),
-            controller: currentFeedbackText == triggers[index].id
+            controller: currentFeedbackText == triggers[index]["id"]
                 ? feedbackController
                 : null,
             decoration: const InputDecoration(
@@ -339,7 +402,7 @@ class _TriggerDetailsState extends State<TriggerDetails> {
                 width: 140,
                 child: ElevatedButton(
                   onPressed: () {
-                    postFeedback(triggers[index].id);
+                    postFeedback(triggers[index]["id"]);
                   },
                   style: const ButtonStyle(
                     shape: MaterialStatePropertyAll(RoundedRectangleBorder(
@@ -369,11 +432,11 @@ class _TriggerDetailsState extends State<TriggerDetails> {
               shrinkWrap: true,
               itemCount: feedbacks.length,
               itemBuilder: (context, fbIndex) {
-                return feedbacks[fbIndex].idTrigger == triggers[index].id
+                return feedbacks[fbIndex].trigger == triggers[index]["id"]
                     ? Card(
-                        color: feedbacks[fbIndex].approved == 2
-                            ? Colors.red[200]
-                            : Config.panelColor2,
+                        color: feedbacks[fbIndex].approved
+                            ? Config.panelColor2
+                            : Colors.red[200],
                         child: Padding(
                           padding: const EdgeInsets.all(12.0),
                           child: Row(
@@ -410,7 +473,7 @@ class _TriggerDetailsState extends State<TriggerDetails> {
                                         Visibility(
                                           visible: user![Config.role] == '1' ||
                                               user![Config.id].toString() ==
-                                                  (feedbacks[fbIndex].idUser)
+                                                  (feedbacks[fbIndex].user)
                                                       .toString(),
                                           child: TextButton(
                                             child: Icon(
@@ -420,8 +483,7 @@ class _TriggerDetailsState extends State<TriggerDetails> {
                                               size: 18,
                                             ),
                                             onPressed: () {
-                                              removeFeedback(
-                                                  feedbacks[index].id);
+                                              removeFeedback(feedbacks[index]);
                                             },
                                           ),
                                         )
@@ -461,15 +523,13 @@ class _TriggerDetailsState extends State<TriggerDetails> {
                                                     _indexLike =
                                                         feedbacks[fbIndex].id;
                                                   });
-                                                  feedbacks[fbIndex].liked == 1
+                                                  feedbacks[fbIndex].liked
                                                       ? deslike(
                                                           feedbacks[fbIndex].id)
                                                       : like(feedbacks[fbIndex]
                                                           .id);
                                                 },
-                                                child: feedbacks[fbIndex]
-                                                            .liked ==
-                                                        1
+                                                child: feedbacks[fbIndex].liked
                                                     ? SizedBox(
                                                         height: 36,
                                                         width: 36,
@@ -509,10 +569,10 @@ class _TriggerDetailsState extends State<TriggerDetails> {
                   _isLoadingMore = true;
                 });
 
-                if (triggerSet != triggers[index].id) {
-                  fetchFeedbacks(limitSet, triggers[index].id);
+                if (triggerSet != triggers[index]["id"]) {
+                  fetchFeedbacks(limitSet, triggers[index]["id"]);
                 } else {
-                  fetchFeedbacks(limitSet, 0);
+                  fetchFeedbacks(limitSet, "0");
                 }
               },
               child: _isLoadingFeedbacks && _isLoadingMore
@@ -530,7 +590,7 @@ class _TriggerDetailsState extends State<TriggerDetails> {
                       child: Align(
                         alignment: Alignment.centerLeft,
                         child: Text(
-                          triggerSet != triggers[index].id
+                          triggerSet != triggers[index]["id"]
                               ? "mais comentários"
                               : "esconder comentários",
                           style: TextStyle(color: Colors.grey[700]),
@@ -570,10 +630,11 @@ class _TriggerDetailsState extends State<TriggerDetails> {
                           child: InkWell(
                             onTap: () {
                               setState(() {
-                                if (openTriggers.contains(triggers[index].id)) {
-                                  openTriggers.remove(triggers[index].id);
+                                if (openTriggers
+                                    .contains(triggers[index]["id"])) {
+                                  openTriggers.remove(triggers[index]["id"]);
                                 } else {
-                                  openTriggers.add(triggers[index].id);
+                                  openTriggers.add(triggers[index]["id"]);
                                 }
                               });
                             },
@@ -591,7 +652,7 @@ class _TriggerDetailsState extends State<TriggerDetails> {
                                           end: Alignment.bottomCenter,
                                           colors: [
                                             Config.secondaryColor!,
-                                            Config.primaryColor!
+                                            Config.primaryColor
                                           ],
                                         )),
                                         child: Padding(
@@ -601,8 +662,8 @@ class _TriggerDetailsState extends State<TriggerDetails> {
                                               top: 2,
                                               right: 2),
                                           child: Text(
-                                            utf8.decode(latin1
-                                                .encode(triggers[index].name)),
+                                            utf8.decode(latin1.encode(
+                                                triggers[index]["name"])),
                                             style: const TextStyle(
                                                 color: Colors.white,
                                                 fontSize: 18),
@@ -630,18 +691,20 @@ class _TriggerDetailsState extends State<TriggerDetails> {
                                             : InkWell(
                                                 onTap: () {
                                                   favorites.contains(
-                                                          triggers[index].id)
-                                                      ? removeFavorite(
-                                                          triggers[index].id)
-                                                      : addFavorite(
-                                                          triggers[index].id);
+                                                          triggers[index]["id"])
+                                                      ? removeFavoriteTrigger(
+                                                          triggers[index]["id"])
+                                                      : addFavoriteTrigger(
+                                                          triggers[index]
+                                                              ["id"]);
                                                 },
                                                 child: SizedBox(
                                                   height: 30,
                                                   width: 30,
                                                   child: Icon(
                                                     favorites.contains(
-                                                            triggers[index].id)
+                                                            triggers[index]
+                                                                ["id"])
                                                         ? Icons.star
                                                         : Icons
                                                             .star_border_outlined,
@@ -676,18 +739,20 @@ class _TriggerDetailsState extends State<TriggerDetails> {
                                           width: 36,
                                           child: InkWell(
                                             onTap: () {
-                                              vote(triggers[index].id, 1);
+                                              vote(triggers[index]["id"], true);
                                             },
                                             child: Icon(
                                               Icons.check,
-                                              color: exists[index]["voted"] == 1
+                                              color: triggers[index]["exists"]
+                                                      ["voted"]
                                                   ? Colors.green
                                                   : Config.disabledColor
                                                       .withOpacity(0.5),
                                             ),
                                           ),
                                         ),
-                                  Text(exists[index]["total"].toString())
+                                  Text(triggers[index]["exists"]["total"]
+                                      .toString())
                                 ],
                               ),
                               const SizedBox(
@@ -707,22 +772,23 @@ class _TriggerDetailsState extends State<TriggerDetails> {
                                           ))
                                       : InkWell(
                                           onTap: () {
-                                            vote(triggers[index].id, 0);
+                                            vote(triggers[index]["id"], false);
                                           },
                                           child: SizedBox(
                                             width: 36,
                                             height: 36,
                                             child: Icon(
                                               Icons.close,
-                                              color:
-                                                  notExists[index]["voted"] == 1
-                                                      ? Colors.red[900]
-                                                      : Config.disabledColor
-                                                          .withOpacity(0.5),
+                                              color: triggers[index]
+                                                      ["notExists"]["voted"]
+                                                  ? Colors.red[900]
+                                                  : Config.disabledColor
+                                                      .withOpacity(0.5),
                                             ),
                                           ),
                                         ),
-                                  Text(notExists[index]["total"].toString())
+                                  Text(triggers[index]["notExists"]["total"]
+                                      .toString())
                                 ],
                               ),
                             ],
@@ -794,6 +860,7 @@ class _TriggerDetailsState extends State<TriggerDetails> {
           child: const Icon(
             Icons.arrow_back_ios,
             size: 18,
+            color: Colors.white,
           ),
           onTap: () {
             Navigator.pop(context);
@@ -805,32 +872,51 @@ class _TriggerDetailsState extends State<TriggerDetails> {
                 child: SizedBox(
                   height: 40,
                   child: TextField(
+                    cursorColor: Colors.white,
                     controller: searchText,
                     onChanged: fetchSearch,
                     decoration: InputDecoration(
                         prefixIcon: Icon(
                           Icons.search,
                           size: 16,
+                          color: Colors.white,
                         ),
                         contentPadding:
                             const EdgeInsets.fromLTRB(16, 13, 16, 14),
                         border: InputBorder.none,
+                        hintStyle: TextStyle(
+                            color: Color.fromARGB(180, 255, 255, 255)),
                         hintText: 'Pesquisar por Gatilhos...'),
                   ),
                 ),
               )
             : Text(
                 "Gatilhos de ${widget.title.length > 32 ? (widget.title.substring(0, 32) + "...") : widget.title}",
-                style: TextStyle(fontSize: widget.title.length > 29 ? 12 : 14),
+                style: TextStyle(
+                    fontSize: widget.title.length > 29 ? 12 : 14,
+                    color: Colors.white),
               ),
         actions: [
+          // !_isSearching
+          //     ? IconButton(
+          //         onPressed: () {
+          //           getData();
+          //         },
+          //         icon: Icon(
+          //           Icons.replay_outlined,
+          //           color: Colors.white,
+          //         ))
+          //     : const SizedBox(),
           IconButton(
             onPressed: () {
               setState(() {
                 _isSearching = !_isSearching;
               });
             },
-            icon: Icon(_isSearching ? Icons.close : Icons.search),
+            icon: Icon(
+              _isSearching ? Icons.close : Icons.search,
+              color: Colors.white,
+            ),
           ),
           user![Config.role] == '1'
               ? IconButton(

@@ -18,6 +18,7 @@ class _HelpPageState extends State<HelpPage> {
             child: const Icon(
               Icons.arrow_back_ios,
               size: 18,
+              color: Colors.white,
             ),
             onTap: () {
               Navigator.pop(context);

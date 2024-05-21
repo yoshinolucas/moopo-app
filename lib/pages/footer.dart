@@ -28,7 +28,7 @@ class _FooterState extends State<Footer> {
               top: BorderSide(
                   width: 2.0,
                   color: widget.current == 1
-                      ? (Config.primaryColor)!
+                      ? (Config.primaryColor)
                       : Colors.transparent),
             ),
           ),
@@ -74,7 +74,7 @@ class _FooterState extends State<Footer> {
               top: BorderSide(
                   width: 2.0,
                   color: widget.current == 2
-                      ? (Config.primaryColor)!
+                      ? (Config.primaryColor)
                       : Colors.transparent),
             ),
           ),
@@ -123,7 +123,7 @@ class _FooterState extends State<Footer> {
               top: BorderSide(
                   width: 2.0,
                   color: widget.current == 3
-                      ? (Config.primaryColor)!
+                      ? (Config.primaryColor)
                       : Colors.transparent),
             ),
           ),
@@ -170,7 +170,7 @@ class _FooterState extends State<Footer> {
               top: BorderSide(
                   width: 2.0,
                   color: widget.current == 4
-                      ? (Config.primaryColor)!
+                      ? (Config.primaryColor)
                       : Colors.transparent),
             ),
           ),
@@ -217,7 +217,7 @@ class _FooterState extends State<Footer> {
               top: BorderSide(
                   width: 2.0,
                   color: widget.current == 5
-                      ? (Config.primaryColor)!
+                      ? (Config.primaryColor)
                       : Colors.transparent),
             ),
           ),

@@ -344,7 +344,7 @@ class _FavoritesState extends State<Favorites> {
                                   end: Alignment.bottomCenter,
                                   colors: [
                                     Config.secondaryColor!,
-                                    Config.primaryColor!
+                                    Config.primaryColor
                                   ],
                                 )),
                                 child: Padding(

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:app_movie/components/custom_snackbar.dart';
 import 'package:app_movie/config/config.dart';
 import 'package:app_movie/entities/content.dart';
 import 'package:app_movie/entities/trigger.dart';
@@ -11,8 +12,8 @@ import 'package:app_movie/pages/trigger_content_list.dart';
 import 'package:app_movie/pages/triggers.dart';
 import 'package:app_movie/repositories/content_repository.dart';
 import 'package:app_movie/repositories/trigger_repository.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class SearchPage extends StatefulWidget {
@@ -38,13 +39,15 @@ class _SearchPageState extends State<SearchPage>
   List<int>? favoritesMovies = [];
   List<int>? favoritesSeries = [];
 
+  List<int>? favoritesAnimes = [];
+
   List<Content>? movies = [];
   List<Content>? series = [];
   List<Content>? animes = [];
   List<Trigger>? triggers = [];
 
   List<Trigger> triggersFavorites = [];
-  List<int> triggersFavoritesInt = [];
+  List<String> triggersFavoritesString = [];
 
   int _indexMovie = -1;
   int _indexAnime = -1;
@@ -53,6 +56,9 @@ class _SearchPageState extends State<SearchPage>
   bool _isSearched = false;
 
   int selectedIndex = 0;
+
+  FirebaseFirestore db = FirebaseFirestore.instance;
+
   @override
   void initState() {
     super.initState();
@@ -74,47 +80,127 @@ class _SearchPageState extends State<SearchPage>
     setState(() {
       favoritesMovies = [];
       favoritesSeries = [];
+      favoritesAnimes = [];
     });
-    var response = await http.get(
-        Uri.parse("${Config.api}/favorites/list?id=${user![Config.id]}"),
-        headers: {
-          "Accept": "application/json",
-          "content-type": "application/json",
-          "Authorization": token!
-        });
-    if (response.statusCode == 200) {
+
+    var favorites = await db
+        .collection("favorites")
+        .where("idUser", isEqualTo: user![Config.id])
+        .get();
+
+    if (favorites.docs.isNotEmpty) {
       setState(() {
-        for (var favorite in json.decode(response.body)) {
-          if (favorite["origin"] == Config.movie) {
+        favorites.docs.forEach((favorite) {
+          if (favorite.get("origin") == Config.movie) {
             favoritesMovies!.add(favorite["idContent"]);
           }
-          if (favorite["origin"] == Config.serie ||
-              favorite["origin"] == Config.anime) {
+          if (favorite.get("origin") == Config.serie) {
             favoritesSeries!.add(favorite["idContent"]);
           }
-        }
-        _isLoading = false;
+          if (favorite.get("origin") == Config.anime) {
+            favoritesAnimes!.add(favorite["idContent"]);
+          }
+        });
       });
     }
+
+    setState(() {
+      _isLoading = false;
+      _indexMovie = -1;
+      _indexAnime = -1;
+      _indexSerie = -1;
+    });
+  }
+
+  addFavorite(content, origin) async {
+    setState(() {
+      _isLoading = true;
+    });
+    var favorite = {
+      'idUser': user![Config.id],
+      'idContent': content,
+      'origin': origin
+    };
+
+    db.collection("favorites").add(favorite).then((value) {
+      fetchFavorites();
+
+      Timer(
+          const Duration(milliseconds: 200),
+          () => CustomSnackBar.show(
+              context, 'Adicionado aos favoritos com sucesso.'));
+    });
+  }
+
+  removeFavorite(content, origin) async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    var querySnapshot = await db
+        .collection("favorites")
+        .where("idUser", isEqualTo: user![Config.id])
+        .where("idContent", isEqualTo: content)
+        .where("origin", isEqualTo: origin)
+        .get();
+    querySnapshot.docs.forEach((doc) async {
+      await doc.reference.delete();
+    });
+
+    fetchFavorites();
+    Timer(
+        const Duration(milliseconds: 200),
+        () => CustomSnackBar.show(
+            context, 'Removido dos favoritos com sucesso.'));
   }
 
   fetchFavoritesTriggers() async {
-    var response = await http.get(
-        Uri.parse(
-            "${Config.api}/triggers_favorites/list?id=${user![Config.id]}"),
-        headers: {
-          "Accept": "application/json",
-          "content-type": "application/json",
-          "Authorization": token!
-        });
-    if (response.statusCode == 200) {
+    var tf = await db
+        .collection("triggers_favorites")
+        .where("idUser", isEqualTo: user![Config.id])
+        .get();
+
+    if (tf.docs.isNotEmpty) {
       setState(() {
-        triggersFavoritesInt = json.decode(response.body).cast<int>();
-        _isLoading = false;
+        triggersFavoritesString =
+            tf.docs.map((v) => v.get("idTrigger") as String).toList();
       });
     } else {
-      throw Exception('Failed to load Favorites');
+      setState(() {
+        triggersFavoritesString = [];
+      });
     }
+    setState(() {
+      _isLoading = false;
+    });
+  }
+
+  removeFavoriteTrigger(trigger) async {
+    setState(() {
+      _isLoading = true;
+    });
+    var querySnapshot = await db
+        .collection("triggers_favorites")
+        .where("idUser", isEqualTo: user![Config.id])
+        .where("idTrigger", isEqualTo: trigger)
+        .get();
+    querySnapshot.docs.forEach((doc) async {
+      await doc.reference.delete();
+    });
+
+    fetchFavoritesTriggers();
+    showInSnackBar('Removido dos favoritos com sucesso.');
+  }
+
+  addFavoriteTrigger(trigger) async {
+    setState(() {
+      _isLoading = true;
+    });
+    var body = {'idUser': user![Config.id], 'idTrigger': trigger};
+    db.collection("triggers_favorites").add(body).then((value) {
+      fetchFavoritesTriggers();
+      showInSnackBar('Adicionado aos favoritos com sucesso.');
+    });
   }
 
   void showInSnackBar(msg) {
@@ -125,81 +211,6 @@ class _SearchPageState extends State<SearchPage>
         backgroundColor: Config.primaryColor,
       ),
     );
-  }
-
-  removeFavoriteTrigger(trigger) async {
-    setState(() {
-      _isLoading = true;
-    });
-    var response = await http.delete(
-        Uri.parse(
-            "${Config.api}/triggers_favorites/delete?user=${user![Config.id]}&id=$trigger"),
-        headers: {
-          "Accept": "application/json",
-          "content-type": "application/json",
-          "Authorization": token!
-        });
-    if (response.statusCode == 200) {
-      fetchFavoritesTriggers();
-      showInSnackBar('Removido dos favoritos com sucesso.');
-    }
-  }
-
-  addFavoriteTrigger(trigger) async {
-    setState(() {
-      _isLoading = true;
-    });
-    var body =
-        json.encode({'id_user': user![Config.id], 'id_trigger': trigger});
-    var response = await http.post(
-        Uri.parse("${Config.api}/triggers_favorites/add"),
-        body: body,
-        headers: {
-          "Accept": "application/json",
-          "content-type": "application/json",
-          "Authorization": token!
-        });
-    if (response.statusCode == 200) {
-      fetchFavoritesTriggers();
-
-      showInSnackBar('Adicionado aos favoritos com sucesso.');
-    }
-  }
-
-  addFavorite(content, origin) async {
-    setState(() {
-      _isLoading = true;
-    });
-    var body = jsonEncode(
-        {'idUser': user![Config.id], 'idContent': content, 'origin': origin});
-    var response = await http
-        .post(Uri.parse("${Config.api}/favorites/add"), body: body, headers: {
-      "Accept": "application/json",
-      "content-type": "application/json",
-      "Authorization": token!
-    });
-    if (response.statusCode == 200) {
-      fetchFavorites();
-      showInSnackBar('Adicionado aos favoritos com sucesso.');
-    }
-  }
-
-  removeFavorite(content, origin) async {
-    setState(() {
-      _isLoading = true;
-    });
-    var response = await http.delete(
-        Uri.parse(
-            "${Config.api}/favorites/delete?user=${user![Config.id]}&content=$content&origin=$origin"),
-        headers: {
-          "Accept": "application/json",
-          "content-type": "application/json",
-          "Authorization": token!
-        });
-    if (response.statusCode == 200) {
-      fetchFavorites();
-      showInSnackBar('Removido dos favoritos com sucesso.');
-    }
   }
 
   reset() {
@@ -284,7 +295,7 @@ class _SearchPageState extends State<SearchPage>
                                   end: Alignment.bottomCenter,
                                   colors: [
                                     Config.secondaryColor!,
-                                    Config.primaryColor!
+                                    Config.primaryColor
                                   ],
                                 )),
                                 child: Padding(
@@ -307,7 +318,7 @@ class _SearchPageState extends State<SearchPage>
                                     ))
                                 : InkWell(
                                     onTap: () {
-                                      triggersFavoritesInt
+                                      triggersFavoritesString
                                               .contains(triggers![index].id)
                                           ? removeFavoriteTrigger(
                                               triggers![index].id)
@@ -318,7 +329,7 @@ class _SearchPageState extends State<SearchPage>
                                       height: 30,
                                       width: 30,
                                       child: Icon(
-                                        triggersFavoritesInt
+                                        triggersFavoritesString
                                                 .contains(triggers![index].id)
                                             ? Icons.star
                                             : Icons.star_border,
@@ -737,6 +748,13 @@ class _SearchPageState extends State<SearchPage>
     );
   }
 
+  String capitalize(String s) {
+    if (s.isEmpty) {
+      return s;
+    }
+    return s[0].toUpperCase() + s.substring(1).toLowerCase();
+  }
+
   Timer? _debounceTimer;
   void fetchSearch(String txt) async {
     if (_debounceTimer != null) {
@@ -763,9 +781,23 @@ class _SearchPageState extends State<SearchPage>
         animesResult = await ContentRepository.fetchContents(1, Config.anime);
       }
 
-      List<Trigger>? triggersResult =
-          await TriggerRepository.getTriggersBySearch(
-              searchText.text, selectedIndex == 1 ? 20 : 4);
+      var triggersResultDb = await db
+          .collection("triggers")
+          .orderBy("name")
+          .startAt([capitalize(searchText.text)])
+          .endAt([capitalize(searchText.text) + '\uf8ff'])
+          .limit(selectedIndex == 2 ? 20 : 4)
+          .get();
+
+      List<Trigger>? triggersResult = triggersResultDb.docs.map((e) {
+        var data = {
+          "id": e.id,
+          "name": e.get("name"),
+          "description": e.get("description")
+        };
+        return Trigger.fromJson(data);
+      }).toList();
+
       setState(() {
         movies = moviesResult;
         series = seriesResult;
@@ -1162,10 +1194,12 @@ class _SearchPageState extends State<SearchPage>
               child: TextField(
                 controller: searchText,
                 onChanged: fetchSearch,
+                cursorColor: Config.primaryColor,
                 decoration: InputDecoration(
                     prefixIcon: Icon(
                       Icons.search,
                       size: 16,
+                      color: Config.primaryColor,
                     ),
                     contentPadding: const EdgeInsets.fromLTRB(16, 13, 16, 14),
                     border: InputBorder.none,
@@ -1178,6 +1212,7 @@ class _SearchPageState extends State<SearchPage>
             child: Align(
               alignment: Alignment.centerLeft,
               child: TabBar(
+                  indicatorColor: Config.primaryColor,
                   onTap: (index) async {
                     List<Trigger>? triggersResult;
                     if (index == 1) {

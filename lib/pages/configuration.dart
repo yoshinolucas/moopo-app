@@ -5,6 +5,7 @@ import 'package:app_movie/pages/footer.dart';
 import 'package:app_movie/pages/help.dart';
 import 'package:app_movie/pages/login_page.dart';
 import 'package:app_movie/pages/perfil.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -17,6 +18,7 @@ class ConfigurationPage extends StatefulWidget {
 
 class _ConfigurationPageState extends State<ConfigurationPage> {
   bool _isLoading = false;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -125,20 +127,20 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
                     foregroundColor: Config.textColor,
                   ),
                   onPressed: () async {
-                    SharedPreferences prefs =
-                        await SharedPreferences.getInstance();
-                    prefs.remove("user");
-                    prefs.remove("token");
-                    prefs.remove("refresh_token");
                     setState(() {
                       _isLoading = true;
                     });
-                    Timer(const Duration(seconds: 1), () {
-                      Navigator.of(context).pushAndRemoveUntil(
-                          MaterialPageRoute(
-                              builder: (context) => const LoginPage()),
-                          (Route<dynamic> route) => false);
-                    });
+                    SharedPreferences prefs =
+                        await SharedPreferences.getInstance();
+                    prefs.remove("user");
+                    await _auth
+                        .signOut()
+                        .then((value) => Timer(const Duration(seconds: 1), () {
+                              Navigator.of(context).pushAndRemoveUntil(
+                                  MaterialPageRoute(
+                                      builder: (context) => const LoginPage()),
+                                  (Route<dynamic> route) => false);
+                            }));
                   },
                   child: const Padding(
                     padding: EdgeInsets.only(top: 8.0, left: 8.0, bottom: 8.0),

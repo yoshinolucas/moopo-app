@@ -1,5 +1,6 @@
-import 'dart:convert';
+import 'dart:async';
 
+import 'package:app_movie/components/custom_snackbar.dart';
 import 'package:app_movie/config/config.dart';
 import 'package:app_movie/entities/genre.dart';
 import 'package:app_movie/entities/content.dart';
@@ -11,7 +12,7 @@ import 'package:app_movie/repositories/content_repository.dart';
 import 'package:app_movie/repositories/genre_repository.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:http/http.dart' as http;
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class ContentList extends StatefulWidget {
   final int type;
@@ -32,6 +33,7 @@ class _ContentListState extends State<ContentList> {
   List<Content>? contents;
   List<Genre>? genres;
   List<int>? favorites = [];
+  FirebaseFirestore db = FirebaseFirestore.instance;
 
   bool _isLoaded = false;
   bool _isLoading = false;
@@ -52,57 +54,58 @@ class _ContentListState extends State<ContentList> {
     setState(() {
       favorites = [];
     });
-    var response = await http.get(
-        Uri.parse("${Config.api}/favorites/list?id=${user![Config.id]}"),
-        headers: {
-          "Accept": "application/json",
-          "content-type": "application/json",
-          "Authorization": token!
-        });
-    if (response.statusCode == 200) {
-      setState(() {
-        for (var favorite in json.decode(response.body)) {
-          favorites!.add(favorite["idContent"]);
-        }
-        _isLoading = false;
+    var favoritesDb = await db
+        .collection("favorites")
+        .where("idUser", isEqualTo: user![Config.id])
+        .get();
+
+    setState(() {
+      favoritesDb.docs.forEach((favorite) {
+        favorites!.add(favorite.get("idContent"));
       });
-    }
+      _isLoading = false;
+    });
   }
 
   addFavorite(content, origin) async {
     setState(() {
       _isLoading = true;
     });
-    var body = jsonEncode(
-        {'idUser': user![Config.id], 'idContent': content, 'origin': origin});
-    var response = await http
-        .post(Uri.parse("${Config.api}/favorites/add"), body: body, headers: {
-      "Accept": "application/json",
-      "content-type": "application/json",
-      "Authorization": token!
-    });
-    if (response.statusCode == 200) {
+    var favorite = {
+      'idUser': user![Config.id],
+      'idContent': content,
+      'origin': origin
+    };
+    db.collection("favorites").add(favorite).then((value) {
       fetchFavorites();
-      showInSnackBar('Adicionado aos favoritos com sucesso.');
-    }
+
+      Timer(
+          const Duration(milliseconds: 200),
+          () => CustomSnackBar.show(
+              context, 'Adicionado aos favoritos com sucesso.'));
+    });
   }
 
   removeFavorite(content, origin) async {
     setState(() {
       _isLoading = true;
     });
-    var response = await http.delete(
-        Uri.parse(
-            "${Config.api}/favorites/delete?user=${user![Config.id]}&content=$content&origin=$origin"),
-        headers: {
-          "Accept": "application/json",
-          "content-type": "application/json",
-          "Authorization": token!
-        });
-    if (response.statusCode == 200) {
-      fetchFavorites();
-      showInSnackBar('Removido dos favoritos com sucesso.');
-    }
+    var db = FirebaseFirestore.instance;
+    var querySnapshot = await db
+        .collection("favorites")
+        .where("idUser", isEqualTo: user![Config.id])
+        .where("idContent", isEqualTo: content)
+        .where("origin", isEqualTo: origin)
+        .get();
+    querySnapshot.docs.forEach((doc) async {
+      await doc.reference.delete();
+    });
+
+    fetchFavorites();
+    Timer(
+        const Duration(milliseconds: 200),
+        () => CustomSnackBar.show(
+            context, 'Removido dos favoritos com sucesso.'));
   }
 
   getData() async {
@@ -457,17 +460,18 @@ class _ContentListState extends State<ContentList> {
       appBar: !_openCategories
           ? AppBar(
               leading: InkWell(
-                child: const Icon(
-                  Icons.arrow_back_ios,
-                  size: 18,
-                ),
+                child: const Icon(Icons.arrow_back_ios,
+                    size: 18, color: Colors.white),
                 onTap: () {
                   Navigator.pop(context);
                 },
               ),
               actions: [
                 IconButton(
-                  icon: const Icon(Icons.search),
+                  icon: const Icon(
+                    Icons.search,
+                    color: Colors.white,
+                  ),
                   onPressed: () {
                     Navigator.push(
                         context,
