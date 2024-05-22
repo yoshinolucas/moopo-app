@@ -1,6 +1,6 @@
 # app_movie
 
-A new Flutter project.
+Catálogo de gatilhos de mídias
 
 ## Getting Started
 
